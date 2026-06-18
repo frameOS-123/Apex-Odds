@@ -1,0 +1,928 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect } from "react";
+import { 
+  LayoutDashboard, Sparkles, GitCompare, Lock, TrendingUp, Star, FileText, Bot, ShieldCheck, Settings, Menu, X, Cpu, LogOut, Award, Users, ShieldAlert, AlertTriangle
+} from "lucide-react";
+import { auth, db } from "./firebase";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+
+// Shared Types
+import { Team, Prediction, UserProfile } from "./types";
+import { translations, getBrowserLanguage, Language } from "./utils/translations";
+
+// Modular Subcomponents
+import LandingPage from "./components/LandingPage";
+import Dashboard from "./components/Dashboard";
+import PredictionsSandbox from "./components/PredictionsSandbox";
+import ComparisonLab from "./components/ComparisonLab";
+import PredictionVault from "./components/PredictionVault";
+import AccuracyCenter from "./components/AccuracyCenter";
+import FavoriteTeams from "./components/FavoriteTeams";
+import WeeklyReports from "./components/WeeklyReports";
+import SaasLicense from "./components/SaaSLicense";
+import SaasSettings from "./components/SaasSettings";
+import AnalystTerminal from "./components/AnalystTerminal";
+import OnboardingTour from "./components/OnboardingTour";
+import FriendsNetwork from "./components/FriendsNetwork";
+import CommandCenter from "./components/CommandCenter";
+
+export default function App() {
+  const [language, setLanguage] = useState<Language>(getBrowserLanguage());
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
+  const [shortcutToast, setShortcutToast] = useState("");
+  const [engineLatency, setEngineLatency] = useState(12);
+  const [engineStatus, setEngineStatus] = useState<"optimal" | "degraded" | "offline">("optimal");
+  const [latencyHistory, setLatencyHistory] = useState<number[]>([11, 14, 12, 15, 13, 12, 14]);
+  const t = translations[language] || translations.en;
+
+  const [user, setUser] = useState<any>(null);
+  const [isLanding, setIsLanding] = useState(true);
+  const [activeView, setActiveView] = useState("builder");
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
+  const [streakPulsing, setStreakPulsing] = useState(false);
+  const prevStreakRef = React.useRef(0);
+
+  // Core App States
+  const [userProfile, setUserProfile] = useState<UserProfile>({
+    uid: "guest",
+    email: null,
+    displayName: "Guest Analyst",
+    tier: "free", // Default to free (default plan) per user request
+    xp: 0,
+    level: 1,
+    streak: 0,
+    initialized: false, // ALL USERS START WITH A BLANK APP BY DEFAULT
+    teams: []
+  });
+
+  const [predictions, setPredictions] = useState<Prediction[]>([]);
+
+  const [isProfileLoading, setIsProfileLoading] = useState(true);
+
+  // GLOBAL KEYBOARD SHORTCUTS (Ctrl+K = Search, Ctrl+P = Model Sandbox)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isCtrlOrMeta = e.ctrlKey || e.metaKey;
+      if (isCtrlOrMeta && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSearchModalOpen(prev => !prev);
+        setShortcutToast("Keyboard Shortcut engaged: Command Center [Ctrl+K]");
+        setTimeout(() => setShortcutToast(""), 3500);
+      } else if (isCtrlOrMeta && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        setActiveView("builder"); // switch straight to simulation sandbox view
+        setSearchModalOpen(false);
+        setIsLanding(false);
+        setShortcutToast("Keyboard Shortcut engaged: Predictive Model Launched [Ctrl+P]");
+        setTimeout(() => setShortcutToast(""), 3500);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  // API HEALTH LIVE MONITORING EFFECT (Measures real HTTP roundtrips)
+  useEffect(() => {
+    let active = true;
+    const checkRealHealth = async () => {
+      const startTime = performance.now();
+      try {
+        const res = await fetch("/api/health");
+        const duration = Math.round(performance.now() - startTime);
+        if (!active) return;
+        if (res.ok) {
+          // If the status is toggled to degraded, simulate network lag/stalls
+          const simulatedLatency = engineStatus === "degraded" ? duration + 152 : Math.max(8, duration);
+          setEngineLatency(simulatedLatency);
+          setLatencyHistory(prev => [...prev.slice(-6), simulatedLatency]);
+        } else {
+          setEngineStatus("offline");
+        }
+      } catch (err) {
+        if (active) setEngineStatus("offline");
+      }
+    };
+
+    checkRealHealth();
+    const interval = setInterval(checkRealHealth, 8000); // refresh every 8 seconds
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [engineStatus]);
+
+  // 1. LISTEN TO AUTHENTICATED STATES
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setIsProfileLoading(true);
+      if (firebaseUser) {
+        setUser(firebaseUser);
+        setIsLanding(false);
+
+        // Load profile from firestore
+        const docRef = doc(db, "users", firebaseUser.uid);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+          const loadedProfile = docSnap.data() as UserProfile;
+          setUserProfile(loadedProfile);
+        } else {
+          // Initialize new blank profile in cloud
+          const newProfile: UserProfile = {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName || "Analytical Star",
+            tier: "free", // Deploy with default free plan
+            xp: 0,
+            level: 1,
+            streak: 0,
+            initialized: false, // New users start with a blank app
+            teams: []
+          };
+          await setDoc(docRef, newProfile);
+          setUserProfile(newProfile);
+        }
+
+        // Load predictions from cloud user subcollection (simulated in document profile under prediction list or local cache)
+        const cachedPreds = localStorage.getItem(`preds-${firebaseUser.uid}`);
+        if (cachedPreds) {
+          setPredictions(JSON.parse(cachedPreds));
+        } else {
+          setPredictions([]);
+        }
+
+      } else {
+        setUser(null);
+        // Load Guest state from Cache
+        const guestData = localStorage.getItem("guest-profile");
+        const guestPreds = localStorage.getItem("guest-predictions");
+
+        if (guestData) {
+          setUserProfile(JSON.parse(guestData));
+        } else {
+          setUserProfile({
+            uid: "guest",
+            email: null,
+            displayName: "Guest Analyst",
+            tier: "free",
+            xp: 0,
+            level: 1,
+            streak: 0,
+            initialized: false,
+            teams: []
+          });
+        }
+
+        if (guestPreds) {
+          setPredictions(JSON.parse(guestPreds));
+        } else {
+          setPredictions([]);
+        }
+      }
+      setIsProfileLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Sync state modifications to disk
+  useEffect(() => {
+    if (isProfileLoading) return; // Prevent overwriting state during initial load!
+
+    if (user) {
+      // Sync cloud profile in background
+      const docRef = doc(db, "users", user.uid);
+      setDoc(docRef, userProfile).catch(err => console.error("Cloud firestore sync failure:", err));
+      localStorage.setItem(`preds-${user.uid}`, JSON.stringify(predictions));
+    } else {
+      localStorage.setItem("guest-profile", JSON.stringify(userProfile));
+      localStorage.setItem("guest-predictions", JSON.stringify(predictions));
+    }
+  }, [userProfile, predictions, isProfileLoading, user]);
+
+  // Auto-launch Onboarding tour for first-time users after entering the workspace
+  useEffect(() => {
+    if (!isLanding && !isProfileLoading) {
+      const completed = localStorage.getItem("apexodds-onboarding-completed");
+      if (!completed) {
+        setTourOpen(true);
+      }
+    }
+  }, [isLanding, isProfileLoading]);
+
+  // Track user streak changes and activate custom glow pulse
+  useEffect(() => {
+    if (isProfileLoading) return;
+    if (userProfile.streak > prevStreakRef.current) {
+      setStreakPulsing(true);
+      const timer = setTimeout(() => {
+        setStreakPulsing(false);
+      }, 2500);
+      return () => clearTimeout(timer);
+    }
+    prevStreakRef.current = userProfile.streak;
+  }, [userProfile.streak, isProfileLoading]);
+
+  // 2. BLANK INITIALIZATION SEQUENCE (Deploying template parameters)
+  const initializeWorkspace = () => {
+    // Generate beautiful initial predictions
+    const seedPredictions: Prediction[] = [
+      {
+        id: "pred-seed-1",
+        matchup: "KC Chiefs vs BUF Bills",
+        sport: "NFL",
+        teamA: "KC Chiefs",
+        teamB: "BUF Bills",
+        probA: 71,
+        probB: 29,
+        score: "27 - 24",
+        edgeLevel: "High",
+        edgeDesc: "AI models register star quarterback weather stability variance.",
+        markdownAnalysis: "Comprehensive parameters favour Kansas City on rain conditions. Offensive red-zone coverage parameters project to excel beyond local league thresholds.",
+        findings: [
+          "Chiefs are 6-0 against the spread in snowy environments.",
+          "Passing yards variance projected at +15% over expected values."
+        ],
+        createdAt: new Date().toLocaleDateString()
+      },
+      {
+        id: "pred-seed-2",
+        matchup: "BOS Celtics vs NY Knicks",
+        sport: "NBA",
+        teamA: "BOS Celtics",
+        teamB: "NY Knicks",
+        probA: 64,
+        probB: 36,
+        score: "116 - 110",
+        edgeLevel: "Medium",
+        edgeDesc: "Stable fastbreaks and player rest metrics.",
+        markdownAnalysis: "Celtics excel on paint transitions. Rotation parameters yield optimal defensive consistency indices.",
+        findings: [
+          "Boston has +8 rebounding margin advantage in back-to-back schedules.",
+          "Atmosphere crowd noise factor shows minimal regression."
+        ],
+        createdAt: new Date().toLocaleDateString()
+      }
+    ];
+
+    const seedTeams: Team[] = [
+      { sport: "NFL", name: "KC Chiefs", winProb: "71%", nextMatch: "vs BUF Bills" },
+      { sport: "NBA", name: "BOS Celtics", winProb: "64.5%", nextMatch: "vs NY Knicks" }
+    ];
+
+    setUserProfile(prev => ({
+      ...prev,
+      initialized: true,
+      xp: 500, // Grant 500 XP bonus!
+      level: 3,
+      streak: 1,
+      teams: seedTeams
+    }));
+
+    setPredictions(seedPredictions);
+    setActiveView("dashboard");
+  };
+
+  // 3. SEEDING / FAVORITES HANDLERS
+  const addTeamToFavorites = (teamName: string, sportName: string) => {
+    const newTeam: Team = {
+      sport: sportName,
+      name: teamName,
+      winProb: "58%",
+      nextMatch: "Scheduled Matchup"
+    };
+    setUserProfile(prev => ({
+      ...prev,
+      teams: [...prev.teams, newTeam]
+    }));
+  };
+
+  const removeTeamFromFavorites = (teamName: string) => {
+    setUserProfile(prev => ({
+      ...prev,
+      teams: prev.teams.filter(t => t.name !== teamName)
+    }));
+  };
+
+  const addPredictionToVault = (pred: Prediction) => {
+    setPredictions(prev => [pred, ...prev]);
+  };
+
+  const resolvePredictionOutcome = (
+    id: string, 
+    winner: "teamA" | "teamB" | "draw", 
+    finalScore: string, 
+    customMessage?: string
+  ) => {
+    setPredictions(prev => prev.map(p => {
+      if (p.id !== id) return p;
+      const userChoice = p.probA > p.probB ? "teamA" : "teamB";
+      const isCorrect = userChoice === winner;
+
+      return {
+        ...p,
+        status: isCorrect ? "Correct" : "Incorrect",
+        actualOutcome: winner,
+        actualScore: finalScore,
+        review: customMessage || `Match resolved at standard baseline. Final Score: ${finalScore}. ${isCorrect ? "🏆 Simulation projected the winner correctly." : "❌ Model variance threshold exceeded."}`
+      };
+    }));
+
+    // Grant XP and adjust streak
+    const pred = predictions.find(p => p.id === id);
+    if (pred) {
+      const userChoice = pred.probA > pred.probB ? "teamA" : "teamB";
+      const isCorrect = userChoice === winner;
+      if (isCorrect) {
+        grantXp(250);
+        setUserProfile(prev => ({ ...prev, streak: prev.streak + 1 }));
+      } else {
+        grantXp(80);
+        setUserProfile(prev => ({ ...prev, streak: 0 }));
+      }
+    }
+  };
+
+  const grantXp = (amount: number) => {
+    setUserProfile(prev => {
+      let nextXp = prev.xp + amount;
+      let nextLevel = prev.level;
+      if (nextXp >= 2000) {
+        nextXp -= 2000;
+        nextLevel += 1;
+      }
+      return {
+        ...prev,
+        xp: nextXp,
+        level: nextLevel
+      };
+    });
+  };
+
+  const toggleLicenseTier = (tier: "free" | "plus" | "pro" | "syndicate") => {
+    setUserProfile(prev => ({
+      ...prev,
+      tier
+    }));
+  };
+
+  const handleLogOut = async () => {
+    setIsProfileLoading(true);
+    await signOut(auth);
+    localStorage.removeItem("guest-profile");
+    localStorage.removeItem("guest-predictions");
+    setPredictions([]);
+    setUserProfile({
+      uid: "guest",
+      email: null,
+      displayName: "Guest Analyst",
+      tier: "free",
+      xp: 0,
+      level: 1,
+      streak: 0,
+      initialized: false,
+      teams: []
+    });
+    setIsLanding(true);
+    setIsProfileLoading(false);
+  };
+
+  // RENDER LANDING PAGE IF NOT YET COMMITTED TO WORKSPACE VIEW
+  if (isLanding) {
+    return (
+      <LandingPage 
+        onContinueAsGuest={() => setIsLanding(false)} 
+        onAuthSuccess={() => setIsLanding(false)} 
+      />
+    );
+  }
+
+  const renderBlankWorkspaceState = (tabName: string) => {
+    return (
+      <div className="py-12 flex items-center justify-center min-h-[60vh] select-none">
+        <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 md:p-12 max-w-xl text-center space-y-6 relative overflow-hidden shadow-2xl">
+          <div className="absolute top-[-30%] left-[-30%] w-64 h-64 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 flex items-center justify-center mx-auto border border-indigo-500/20">
+            <Sparkles className="w-8 h-8 text-indigo-400 animate-pulse" />
+          </div>
+
+          <div className="space-y-3">
+            <span className="bg-indigo-500/10 text-indigo-400 text-[10px] font-black px-3.5 py-1.5 rounded-full uppercase tracking-widest border border-indigo-500/20 font-mono">
+              Workspace Unseeded
+            </span>
+            <h2 className="text-xl md:text-2xl font-black text-white pt-2">{tabName} is Locked</h2>
+            <p className="text-slate-400 text-xs md:text-sm leading-relaxed max-w-md mx-auto">
+              Your workspace is currently blank. Deploy your custom Quantum Analytical Canvas to seed real-time simulation databases, sports telemetry, and analytical tables.
+            </p>
+          </div>
+
+          <button 
+            onClick={initializeWorkspace}
+            className="w-full sm:w-auto px-8 py-4 rounded-xl bg-indigo-600 hover:bg-indigo-550 text-white font-black text-xs uppercase tracking-wider transition-all duration-200 cursor-pointer shadow-[0_0_15px_rgba(79,70,229,0.3)] hover:shadow-[0_0_25px_rgba(79,70,229,0.55)] transform hover:-translate-y-0.5"
+          >
+            🚀 Deploy Analytical Canvas
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ACTIVE NAVIGATION PANEL ROUTER
+  const renderActivePanel = () => {
+    const isUninitialized = !userProfile.initialized;
+
+    switch (activeView) {
+      case "dashboard":
+      case "builder":
+        return (
+          <Dashboard 
+            initialized={userProfile.initialized} 
+            onInitializeWorkspace={initializeWorkspace}
+            predictions={predictions}
+            onQuickAnalyze={(sport, matchup) => {
+              setActiveView("predictions");
+            }}
+          />
+        );
+      case "predictions":
+        if (isUninitialized) return renderBlankWorkspaceState("Sandbox Modeler");
+        return (
+          <PredictionsSandbox 
+            userTier={userProfile.tier} 
+            onAddPredictionToVault={addPredictionToVault}
+            onGrantXp={grantXp}
+            predictionsCount={predictions.length}
+            predictions={predictions}
+            onUpgrade={() => setActiveView("membership")}
+          />
+        );
+      case "comparison":
+        if (isUninitialized) return renderBlankWorkspaceState("Visual Comparison Lab");
+        return <ComparisonLab />;
+      case "vault":
+        if (isUninitialized) return renderBlankWorkspaceState("Prediction Vault");
+        return (
+          <PredictionVault 
+            userTier={userProfile.tier} 
+            onUpgrade={() => setActiveView("membership")} 
+            predictions={predictions}
+            onResolvePrediction={resolvePredictionOutcome}
+          />
+        );
+      case "accuracy":
+        if (isUninitialized) return renderBlankWorkspaceState("Accuracy Center");
+        return (
+          <AccuracyCenter 
+            predictionsCount={predictions.length}
+            predictions={predictions}
+          />
+        );
+      case "favorites":
+        if (isUninitialized) return renderBlankWorkspaceState("Followed Projects");
+        return (
+          <FavoriteTeams 
+            favoriteTeams={userProfile.teams} 
+            onAddTeam={addTeamToFavorites}
+            onRemoveTeam={removeTeamFromFavorites}
+          />
+        );
+      case "friends":
+        return (
+          <FriendsNetwork 
+            userProfile={userProfile}
+            onChangeProfile={(newProfile) => setUserProfile(newProfile)}
+            userTier={userProfile.tier}
+            onUpgrade={() => setActiveView("membership")}
+          />
+        );
+      case "reports":
+        if (isUninitialized) return renderBlankWorkspaceState("Analytical Reports");
+        return (
+          <WeeklyReports 
+            userTier={userProfile.tier} 
+            userProfile={userProfile}
+            predictions={predictions}
+            onUpgrade={() => setActiveView("membership")} 
+          />
+        );
+      case "analyst":
+        if (isUninitialized) return renderBlankWorkspaceState("Grounded AI Analyst");
+        return <AnalystTerminal onGrantXp={grantXp} />;
+      case "membership":
+        return (
+          <SaasLicense 
+            userTier={userProfile.tier} 
+            onSetTier={toggleLicenseTier} 
+          />
+        );
+      case "settings":
+        return (
+          <SaasSettings 
+            onClearWorkspace={() => {
+              setPredictions([]);
+              setUserProfile(prev => ({
+                ...prev,
+                initialized: false,
+                teams: []
+              }));
+              if (user) {
+                localStorage.removeItem(`preds-${user.uid}`);
+              } else {
+                localStorage.removeItem("guest-predictions");
+              }
+            }} 
+          />
+        );
+      default:
+        return <div className="text-slate-400">Section dynamic loader error</div>;
+    }
+  };
+
+  const viewTitles: Record<string, { title: string; sub: string }> = {
+    builder: { title: "Build Your Workspace", sub: "Deploy custom modular analytics systems." },
+    dashboard: { title: "Enterprise Analytics Dashboard", sub: "Review predictions and real-time sports telemetry." },
+    predictions: { title: "Quantum Prediction Sandbox", sub: "Fine-tune matchup weights and model custom scores." },
+    comparison: { title: "Visual Comparison Lab", sub: "Analyze franchises side-by-side using local parameters." },
+    vault: { title: "Prediction Vault Archives", sub: "Diagnostic outcome summaries and post-game reviews." },
+    accuracy: { title: "AI Accuracy Diagnostics", sub: "Monitor sport precision and probability metrics." },
+    favorites: { title: "Followed Franchise workspaces", sub: "Alert settings and focal team charts." },
+    friends: { title: "Syndicate Friends Network", sub: "Invite buddy analysts, challenge streaks, and synchronize syndicate rooms." },
+    reports: { title: "Analytical PDF Reports", sub: "Automated analysis weekly briefings." },
+    analyst: { title: "Grounded AI Analyst Terminal", sub: "Interact with live search-grounded statistics models." },
+    membership: { title: "SaaS License Manager", sub: "Toggle Standard and Pro enterprise tiers." },
+    settings: { title: "System Preferences", sub: "Notification profiles and Dark settings." }
+  };
+
+  const currentMeta = viewTitles[activeView] || { title: "Workspace Pro", sub: "SaaS Modeling Rig." };
+
+  return (
+    <div className="min-h-screen text-slate-200 flex flex-col lg:flex-row relative bg-slate-950 select-none">
+      
+      {/* Dynamic News ticker at the top */}
+      <div className="absolute top-0 left-0 w-full h-8 bg-slate-900 border-b border-slate-800 overflow-hidden z-50 flex items-center select-none font-mono text-[10px] uppercase">
+        <div className="ticker-text whitespace-nowrap animate-[ticker_40s_linear_infinite] flex items-center gap-12 text-slate-400">
+          <span>🏈 WEATHER ALERTS: BUF VS NYG (88% Chance of Rain, Over indices expected)</span>
+          <span>🏀 NBA LIVE DELTA: BOS Celtics -5.5 (Confidence model: A+)</span>
+          <span>⚡ LIVE TARGET EDGE SHIFT: KC Chiefs (+3.4% discrepancy detected)</span>
+          <span>🏒 NHL STREAK ALERTS: EDM Oilers (+6 Win momentum curves active)</span>
+          <span>⚽ EPL TACTICAL TRENDS: Arsenal Defensive lines in peak recuperation</span>
+          <span>🎾 TENNIS MATCH DELTA: Djokovic serving velocity up index +12%</span>
+          <span>🏈 WEATHER ALERTS: BUF VS NYG (88% Chance of Rain, Over indices expected)</span>
+          <span>🏀 NBA LIVE DELTA: BOS Celtics -5.5 (Confidence model: A+)</span>
+          <span>⚡ LIVE TARGET EDGE SHIFT: KC Chiefs (+3.4% discrepancy detected)</span>
+        </div>
+      </div>
+
+      {/* Responsive Sidebar Left */}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-72 lg:w-80 bg-slate-900 border-r border-slate-800 flex flex-col justify-between transform transition-transform duration-300 ease-in-out pt-8 ${
+        sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+      }`}>
+        <div className="flex flex-col h-full overflow-y-auto no-scrollbar pt-4">
+          
+          {/* Logo Header */}
+          <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(79,70,229,0.3)] border border-white/10 shrink-0">
+                <img 
+                  src="/src/assets/images/apexodds_logo_1781644611647.jpg" 
+                  referrerPolicy="no-referrer"
+                  alt="ApexOdds Logo"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div>
+                <h2 className="text-base font-black text-white leading-none">ApexOdds</h2>
+                <span className="text-[9px] uppercase tracking-[0.25em] text-indigo-400 font-bold font-mono">Platform v3.5</span>
+              </div>
+            </div>
+            <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-slate-400 hover:text-white cursor-pointer">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Gamification Progress Tracker (Pro Feature) */}
+          <div className="mx-4 my-6 p-4 rounded-3xl bg-slate-950 border border-slate-800 relative overflow-hidden">
+            <div className="absolute right-[-10px] bottom-[-10px] w-20 h-20 bg-indigo-500/10 rounded-full blur-xl pointer-events-none" />
+            <div className="relative flex items-center gap-3 mb-3">
+              <div className="relative">
+                <div className="w-10 h-10 rounded-xl bg-slate-900 border border-indigo-500/20 flex items-center justify-center font-bold text-indigo-400">
+                  QA
+                </div>
+                <span className="absolute -bottom-1.5 -right-1.5 w-5 h-5 bg-indigo-405 border-2 border-slate-950 rounded-full flex items-center justify-center text-[8px] font-black text-slate-950">
+                  {userProfile.level}
+                </span>
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <h4 className="font-extrabold text-xs text-white leading-none">SaaS Analyst</h4>
+                  <span className="bg-indigo-500/20 text-indigo-400 text-[8px] font-black px-1.5 py-0.5 rounded-full font-mono uppercase">
+                    {userProfile.tier.toUpperCase()}
+                  </span>
+                </div>
+                <p className="text-[9px] text-slate-400">
+                  Analyst XP: <span className="text-indigo-400 font-bold font-mono">{userProfile.xp}</span> / 2,000
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full h-1 bg-slate-900 rounded-full overflow-hidden mb-3">
+              <div className="h-full bg-indigo-400 rounded-full transition-all duration-500" style={{ width: `${(userProfile.xp / 2000) * 100}%` }} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-center text-[10px] font-mono">
+              <div className={`p-2 rounded-2xl border leading-none space-y-1 transition duration-500 ${streakPulsing ? "bg-pink-950/25 border-pink-500/60 animate-streak-pulse shadow-[0_0_15px_rgba(236,72,153,0.3)]" : "bg-slate-900/60 border-slate-800/80"}`}>
+                <span className={`text-[8px] font-bold block uppercase tracking-wider transition ${streakPulsing ? "text-pink-400 font-extrabold" : "text-slate-500"}`}>STREAK</span>
+                <span className={`font-black text-xs transition duration-300 ${streakPulsing ? "text-pink-300" : "text-indigo-400"}`}>🔥 {userProfile.streak} Win</span>
+              </div>
+              <div className="bg-slate-900/60 p-2 rounded-2xl border border-slate-800/80 leading-none space-y-1">
+                <span className="text-slate-500 text-[8px] font-bold block uppercase tracking-wider">REWARDS</span>
+                <span className="text-amber-400 font-black text-xs">🏆 8 Earned</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Nav Items */}
+          <nav className="flex-1 px-3 space-y-0.5">
+            {[
+              { id: "dashboard", label: t.dashboard, icon: LayoutDashboard },
+              { id: "predictions", label: t.sandbox, icon: Sparkles },
+              { id: "comparison", label: "Comparison Lab", icon: GitCompare },
+              { id: "vault", label: t.vault, icon: Lock, isProLocked: true },
+              { id: "accuracy", label: t.accuracy, icon: TrendingUp },
+              { id: "favorites", label: "Followed Projects", icon: Star },
+              { id: "friends", label: t.friends, icon: Users },
+              { id: "reports", label: "Weekly PDF Sheets", icon: FileText, isProLocked: true },
+              { id: "analyst", label: "Grounded AI Analyst", icon: Bot },
+              { id: "membership", label: t.licensing, icon: ShieldCheck },
+              { id: "settings", label: "Preferences", icon: Settings }
+            ].map(item => {
+              const active = (item.id === "dashboard" && activeView === "builder") || activeView === item.id;
+              const isLocked = item.isProLocked && userProfile.tier === "free";
+
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveView(item.id)}
+                  className={`flex items-center justify-between w-full px-4 py-3 rounded-xl font-semibold text-xs transition duration-150 group cursor-pointer ${
+                    active 
+                      ? "bg-indigo-600/10 border border-indigo-500/20 text-indigo-400 font-bold" 
+                      : "text-slate-400 hover:bg-slate-900 hover:text-white border border-transparent"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <item.icon className={`w-4 h-4 transition ${active ? "text-indigo-400" : "text-slate-400 group-hover:text-white"}`} />
+                    <span>{item.label}</span>
+                  </div>
+                  {isLocked && (
+                    <span className="bg-amber-500/10 text-amber-500 text-[8px] font-black px-1.5 py-0.5 rounded uppercase font-mono border border-amber-500/20">
+                      LOCK
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+
+        </div>
+
+        {/* Sidebar Footer License Status */}
+        <div className="p-4 border-t border-slate-800 bg-slate-900/40 space-y-3">
+          <div className="flex items-center justify-between text-[10px] text-slate-400">
+            <span className="font-semibold uppercase tracking-wider font-mono text-[9px]">License Plan Status</span>
+            <span className="text-indigo-400 font-bold font-mono tracking-wider">
+              {userProfile.tier === "pro" ? "ENTERPRISE PRO" : "FREE TRIAL"}
+            </span>
+          </div>
+
+          <div className="bg-slate-950 border border-slate-800 p-3 rounded-2xl flex items-center justify-between leading-none pr-4">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-indigo-400 animate-pulse shadow-sm" />
+              <span className="text-[10px] uppercase font-bold text-white tracking-widest font-mono">
+                {userProfile.tier === "pro" ? "SaaS PRO Tier" : "SaaS Free Tier"}
+              </span>
+            </div>
+            <button 
+              onClick={handleLogOut}
+              className="text-slate-400 hover:text-rose-400 p-1 rounded hover:bg-slate-900 cursor-pointer transition"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+      </aside>
+
+      {/* Main Panel Content on Right */}
+      <main className="flex-1 lg:pl-80 flex flex-col min-h-screen pt-8">
+        
+        {/* Sticky Header Nav */}
+        <header className="sticky top-8 z-30 bg-slate-950/75 backdrop-blur-md border-b border-slate-850/80 px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden text-slate-400 hover:text-white p-2 bg-slate-950 rounded-xl border border-slate-800 cursor-pointer"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-lg md:text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-indigo-455 tracking-wide uppercase">
+                {activeView === "builder" ? currentMeta.title : currentMeta.title}
+              </h1>
+              <p className="text-[10px] md:text-xs text-slate-400 font-medium">
+                {currentMeta.sub}
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Stats Actions */}
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center bg-slate-900 border border-slate-800 rounded-full p-1 text-[10px] font-bold">
+              <button 
+                onClick={() => toggleLicenseTier("free")} 
+                className={`px-3 py-1.5 rounded-full transition cursor-pointer ${
+                  userProfile.tier === "free" ? "bg-indigo-650 text-white font-extrabold shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Free Tier
+              </button>
+              <button 
+                onClick={() => toggleLicenseTier("pro")} 
+                className={`px-3 py-1.5 rounded-full transition cursor-pointer ${
+                  userProfile.tier === "pro" ? "bg-indigo-650 text-white font-extrabold shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Pro SaaS
+              </button>
+            </div>
+
+            {/* Language Selector Selector */}
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value as Language)}
+              className="bg-slate-900 border border-slate-800 text-[10px] font-black text-slate-350 rounded-xl px-2.5 py-2 cursor-pointer transition outline-none focus:border-indigo-400 select-none uppercase tracking-wide"
+            >
+              <option value="en">English 🇬🇧</option>
+              <option value="es">Español 🇪🇸</option>
+              <option value="fr">Français 🇫🇷</option>
+            </select>
+
+            {/* API Health monitoring control widget */}
+            <div className="relative group select-none">
+              <button 
+                onClick={() => {
+                  // toggle congestion test manually to check how alerts look!
+                  setEngineStatus(prev => prev === "optimal" ? "degraded" : "optimal");
+                }}
+                title="Telemetry Pipeline Health (Click to Toggle Degradation Test)"
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-[10px] font-mono cursor-pointer transition ${
+                  engineStatus === "offline" 
+                    ? "bg-rose-500/10 border-rose-500/30 text-rose-400" 
+                    : engineStatus === "degraded" 
+                    ? "bg-amber-500/10 border-amber-550/40 text-amber-300 animate-pulse shadow-[0_0_12px_rgba(245,158,11,0.2)]" 
+                    : "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                }`}
+              >
+                <div className={`w-1.5 h-1.5 rounded-full ${
+                  engineStatus === "offline" 
+                    ? "bg-rose-500" 
+                    : engineStatus === "degraded" 
+                    ? "bg-amber-400" 
+                    : "bg-emerald-400 animate-ping"
+                }`} />
+                <span className="uppercase font-bold text-[8px] tracking-wider hidden sm:inline">{t.engineStatus}:</span>
+                <span className="font-bold">{engineLatency}ms</span>
+              </button>
+              
+              {/* Tooltip detail / diagnostic hover sheet */}
+              <div className="absolute right-0 top-full mt-2 w-52 bg-slate-900 border border-slate-800 p-3.5 rounded-2xl shadow-xl opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none group-hover:pointer-events-auto text-left space-y-2.5 z-40">
+                <div className="flex justify-between items-center text-[9px] font-mono">
+                  <span className="text-slate-400 uppercase font-black">Quantum Status</span>
+                  <span className={`font-black uppercase px-1.5 py-0.5 rounded ${
+                    engineStatus === "offline" 
+                      ? "bg-rose-500/10 text-rose-400" 
+                      : engineStatus === "degraded" 
+                      ? "bg-amber-500/15 text-amber-350" 
+                      : "bg-emerald-500/10 text-emerald-400"
+                  }`}>
+                    {engineStatus === "offline" ? "Offline" : engineStatus === "degraded" ? t.degradedState : t.optimalState}
+                  </span>
+                </div>
+                
+                <div className="space-y-1">
+                  <span className="text-[8px] uppercase font-bold text-slate-500 block">Roundtrip Latency History (p95)</span>
+                  <div className="flex gap-1 items-end h-8 bg-slate-950 p-1.5 rounded-lg border border-white/5">
+                    {latencyHistory.map((val, idx) => (
+                      <div 
+                        key={idx} 
+                        className={`flex-1 rounded-sm transition-all duration-300 ${val > 100 ? "bg-amber-500 animate-pulse" : "bg-indigo-400"}`} 
+                        style={{ height: `${Math.min(100, (val / 160) * 100)}%` }} 
+                        title={`${val}ms`}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="text-[9px] text-slate-350 leading-relaxed pt-1.5 border-t border-slate-800 flex justify-between font-mono">
+                  <span>Uptime Index:</span>
+                  <strong className="text-emerald-400">99.98%</strong>
+                </div>
+
+                <p className="text-[7.5px] text-slate-500 italic leading-snug">
+                  Click widget body anytime to toggle simulated load stress and test warnings.
+                </p>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setTourOpen(true)}
+              className="flex items-center gap-1.5 bg-indigo-600/10 hover:bg-indigo-600/25 border border-indigo-500/20 text-indigo-400 hover:text-white px-3 py-2 rounded-xl text-[10px] uppercase font-mono font-bold cursor-pointer transition select-none shrink-0"
+              title="Launch the Interactive Workspace Onboarding Tour"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>{t.quickTour}</span>
+            </button>
+          </div>
+        </header>
+
+        {/* Academic Warning Notification */}
+        <div className="mx-6 md:mx-8 mt-6 p-4 bg-amber-500/10 border border-amber-500/25 text-amber-200 text-xs rounded-2xl flex items-center gap-3 font-medium shadow-sm leading-relaxed">
+          <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0" />
+          <span>⚠️ <strong>{t.disclaimerBrief}</strong></span>
+        </div>
+
+        {/* Dynamic Panel Frame */}
+        <div className="p-6 md:p-8 flex-1 max-w-7xl w-full mx-auto pb-12">
+          {renderActivePanel()}
+        </div>
+
+      </main>
+
+      {/* Floating Keyboard Shortcuts Alert Overlay Ticker */}
+      {shortcutToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 border border-indigo-505/30 border-indigo-500/35 text-indigo-405 text-indigo-300 font-mono text-[10px] uppercase font-bold py-3 px-4.5 py-3.5 px-5 rounded-2xl shadow-2xl flex items-center gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200">
+          <Cpu className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+          <span>{shortcutToast}</span>
+        </div>
+      )}
+
+      {/* CommandCenter modal trigger console */}
+      {searchModalOpen && (
+        <CommandCenter 
+          onClose={() => setSearchModalOpen(false)}
+          onNavigate={(view) => {
+            setActiveView(view);
+            setIsLanding(false);
+          }}
+          userTier={userProfile.tier}
+          translations={t}
+        />
+      )}
+
+      {tourOpen && (
+        <OnboardingTour 
+          onClose={() => setTourOpen(false)}
+          activeView={activeView}
+          onChangeView={(view) => setActiveView(view)}
+          userTier={userProfile.tier}
+        />
+      )}
+
+      {/* Styled ticker frames animation rules inside index.css imports or inject */}
+      <style>{`
+        @keyframes ticker {
+          0% { transform: translate3d(0, 0, 0); }
+          100% { transform: translate3d(-50%, 0, 0); }
+        }
+        @keyframes streak-glow {
+          0% {
+            box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.5);
+            border-color: rgba(236, 72, 153, 0.7);
+            transform: scale(1);
+          }
+          50% {
+            box-shadow: 0 0 15px 4px rgba(236, 72, 153, 0.8);
+            border-color: rgba(236, 72, 153, 0.9);
+            transform: scale(1.04);
+          }
+          100% {
+            box-shadow: 0 0 0 0 rgba(236, 72, 153, 0);
+            border-color: rgba(236, 72, 153, 0.3);
+            transform: scale(1);
+          }
+        }
+        .animate-streak-pulse {
+          animation: streak-glow 1.2s ease-in-out infinite;
+        }
+      `}</style>
+
+    </div>
+  );
+}
