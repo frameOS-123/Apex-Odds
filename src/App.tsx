@@ -14,6 +14,7 @@ import { doc, getDoc, setDoc } from "firebase/firestore";
 // Shared Types
 import { Team, Prediction, UserProfile } from "./types";
 import { translations, getBrowserLanguage, Language } from "./utils/translations";
+import { ResponsiveContainer, AreaChart, Area, Tooltip as RechartsTooltip } from "recharts";
 
 // Modular Subcomponents
 import LandingPage from "./components/LandingPage";
@@ -37,7 +38,10 @@ export default function App() {
   const [shortcutToast, setShortcutToast] = useState("");
   const [engineLatency, setEngineLatency] = useState(12);
   const [engineStatus, setEngineStatus] = useState<"optimal" | "degraded" | "offline">("optimal");
-  const [latencyHistory, setLatencyHistory] = useState<number[]>([11, 14, 12, 15, 13, 12, 14]);
+  const [latencyHistory, setLatencyHistory] = useState<number[]>([
+    11, 14, 12, 15, 13, 12, 14, 18, 11, 10, 13, 15, 
+    12, 14, 16, 12, 11, 13, 14, 12, 15, 13, 12, 14
+  ]);
   const t = translations[language] || translations.en;
 
   const [user, setUser] = useState<any>(null);
@@ -101,7 +105,7 @@ export default function App() {
           // If the status is toggled to degraded, simulate network lag/stalls
           const simulatedLatency = engineStatus === "degraded" ? duration + 152 : Math.max(8, duration);
           setEngineLatency(simulatedLatency);
-          setLatencyHistory(prev => [...prev.slice(-6), simulatedLatency]);
+          setLatencyHistory(prev => [...prev.slice(-23), simulatedLatency]);
         } else {
           setEngineStatus("offline");
         }
@@ -127,27 +131,42 @@ export default function App() {
         setIsLanding(false);
 
         // Load profile from firestore
-        const docRef = doc(db, "users", firebaseUser.uid);
-        const docSnap = await getDoc(docRef);
+        let loadedProfile: UserProfile | null = null;
+        try {
+          const docRef = doc(db, "users", firebaseUser.uid);
+          const docSnap = await getDoc(docRef);
 
-        if (docSnap.exists()) {
-          const loadedProfile = docSnap.data() as UserProfile;
+          if (docSnap.exists()) {
+            loadedProfile = docSnap.data() as UserProfile;
+          }
+        } catch (error: any) {
+          console.warn("Firestore user profile fetch yielded offline or permission error, checking backup cache:", error.message || error);
+        }
+
+        if (loadedProfile) {
           setUserProfile(loadedProfile);
+          localStorage.setItem(`cached-profile-${firebaseUser.uid}`, JSON.stringify(loadedProfile));
         } else {
-          // Initialize new blank profile in cloud
-          const newProfile: UserProfile = {
-            uid: firebaseUser.uid,
-            email: firebaseUser.email,
-            displayName: firebaseUser.displayName || "Analytical Star",
-            tier: "free", // Deploy with default free plan
-            xp: 0,
-            level: 1,
-            streak: 0,
-            initialized: false, // New users start with a blank app
-            teams: []
-          };
-          await setDoc(docRef, newProfile);
-          setUserProfile(newProfile);
+          // Restore from cached profile if found
+          const backupStr = localStorage.getItem(`cached-profile-${firebaseUser.uid}`);
+          if (backupStr) {
+            setUserProfile(JSON.parse(backupStr));
+          } else {
+            // Initialize new blank profile
+            const newProfile: UserProfile = {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              displayName: firebaseUser.displayName || "Analytical Star",
+              tier: "free", // Deploy with default free plan
+              xp: 0,
+              level: 1,
+              streak: 0,
+              initialized: false, // New users start with a blank app
+              teams: []
+            };
+            setUserProfile(newProfile);
+            localStorage.setItem(`cached-profile-${firebaseUser.uid}`, JSON.stringify(newProfile));
+          }
         }
 
         // Load predictions from cloud user subcollection (simulated in document profile under prediction list or local cache)
@@ -201,6 +220,7 @@ export default function App() {
       const docRef = doc(db, "users", user.uid);
       setDoc(docRef, userProfile).catch(err => console.error("Cloud firestore sync failure:", err));
       localStorage.setItem(`preds-${user.uid}`, JSON.stringify(predictions));
+      localStorage.setItem(`cached-profile-${user.uid}`, JSON.stringify(userProfile));
     } else {
       localStorage.setItem("guest-profile", JSON.stringify(userProfile));
       localStorage.setItem("guest-predictions", JSON.stringify(predictions));
@@ -250,6 +270,7 @@ export default function App() {
           "Chiefs are 6-0 against the spread in snowy environments.",
           "Passing yards variance projected at +15% over expected values."
         ],
+        status: "pending",
         createdAt: new Date().toLocaleDateString()
       },
       {
@@ -268,7 +289,52 @@ export default function App() {
           "Boston has +8 rebounding margin advantage in back-to-back schedules.",
           "Atmosphere crowd noise factor shows minimal regression."
         ],
+        status: "pending",
         createdAt: new Date().toLocaleDateString()
+      },
+      {
+        id: "pred-seed-3",
+        matchup: "MIA Dolphins vs NE Patriots",
+        sport: "NFL",
+        teamA: "MIA Dolphins",
+        teamB: "NE Patriots",
+        probA: 82,
+        probB: 18,
+        score: "34 - 17",
+        edgeLevel: "High",
+        edgeDesc: "Offensive speed index mismatch on defensive line thresholds.",
+        markdownAnalysis: "Miami registers maximum explosive play index. New England secondary speed parameters are sub-standard.",
+        findings: [
+          "Miami had speed index rating of 9.2",
+          "Actual score finished at 34 - 17, validating original forecast."
+        ],
+        status: "resolved",
+        actualScore: "34 - 17",
+        actualOutcome: "correct",
+        review: "PERFECT MATCH: The offensive speed model predicted 34-17 and explosive index matched parameters flawlessly.",
+        createdAt: "2026-11-10"
+      },
+      {
+        id: "pred-seed-4",
+        matchup: "LAL Lakers vs GS Warriors",
+        sport: "NBA",
+        teamA: "LAL Lakers",
+        teamB: "GS Warriors",
+        probA: 55,
+        probB: 45,
+        score: "108 - 102",
+        edgeLevel: "High",
+        edgeDesc: "Upset threat identified via perimeter shooting indexes.",
+        markdownAnalysis: "Warriors registration of bench depth is +11% above league normal, posing an explosive upset threat on Lakers slow transition backcourt.",
+        findings: [
+          "Bench points registered at +22 for Golden State.",
+          "Overtime variance triggered skewing Lakers outcome."
+        ],
+        status: "resolved",
+        actualScore: "112 - 114",
+        actualOutcome: "incorrect",
+        review: "MODEL OUTLIER: Overtime variation skewed original Lakers win probability coefficient. Warriors won in double OT.",
+        createdAt: "2026-11-14"
       }
     ];
 
@@ -447,6 +513,11 @@ export default function App() {
             initialized={userProfile.initialized} 
             onInitializeWorkspace={initializeWorkspace}
             predictions={predictions}
+            userTier={userProfile.tier}
+            onUpgrade={() => {
+              setActiveView("membership");
+              setIsLanding(false);
+            }}
             onQuickAnalyze={(sport, matchup) => {
               setActiveView("predictions");
             }}
@@ -466,7 +537,15 @@ export default function App() {
         );
       case "comparison":
         if (isUninitialized) return renderBlankWorkspaceState("Visual Comparison Lab");
-        return <ComparisonLab />;
+        return (
+          <ComparisonLab 
+            userTier={userProfile.tier} 
+            onUpgrade={() => {
+              setActiveView("membership");
+              setIsLanding(false);
+            }} 
+          />
+        );
       case "vault":
         if (isUninitialized) return renderBlankWorkspaceState("Prediction Vault");
         return (
@@ -827,6 +906,35 @@ export default function App() {
                         title={`${val}ms`}
                       />
                     ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1 border-t border-slate-800/80 pt-2">
+                  <span className="text-[8px] uppercase font-bold text-slate-400 block tracking-wider">Historical 24h Latency Sparkline</span>
+                  <div className="w-full h-11 bg-slate-950 p-1 rounded-lg border border-white/5 overflow-hidden">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={latencyHistory.map((val, i) => ({ label: `${23 - i}h`, latency: val }))}>
+                        <defs>
+                          <linearGradient id="latencyHistGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#818cf8" stopOpacity={0.4}/>
+                            <stop offset="95%" stopColor="#818cf8" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <RechartsTooltip 
+                          content={({ active, payload }) => {
+                            if (active && payload && payload.length) {
+                              return (
+                                <div className="bg-slate-900 border border-slate-850 px-1 py-0.5 rounded text-[8px] font-mono text-indigo-300">
+                                  {payload[0].value}ms
+                                </div>
+                              );
+                            }
+                            return null;
+                          }}
+                        />
+                        <Area type="monotone" dataKey="latency" stroke="#818cf8" strokeWidth={1} fillOpacity={1} fill="url(#latencyHistGrad)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
 

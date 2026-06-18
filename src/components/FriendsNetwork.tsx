@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { 
   Users, UserPlus, Send, Zap, Crown, UserMinus, Sparkles, Check, 
-  HelpCircle, ShieldAlert, MessageSquare, AlertCircle, RefreshCw, Trophy
+  HelpCircle, ShieldAlert, MessageSquare, AlertCircle, RefreshCw, Trophy, XSquare
 } from "lucide-react";
 import { UserProfile, Friend } from "../types";
 import { db } from "../firebase";
@@ -28,6 +28,82 @@ export default function FriendsNetwork({ userProfile, onChangeProfile, userTier,
   // Notifications or instant feedback
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Chat system state declarations
+  const [activeChatFriend, setActiveChatFriend] = useState<Friend | null>(null);
+  const [chatMessages, setChatMessages] = useState<Record<string, Array<{ sender: "me" | "friend" | "system", text: string, time: string }>>>({});
+  const [chatInput, setChatInput] = useState("");
+
+  const handleOpenChat = (friend: Friend) => {
+    setActiveChatFriend(friend);
+    // Initialize with a friendly welcome message if there are no messages yet
+    if (!chatMessages[friend.username]) {
+      const initialMsgs = [
+        {
+          sender: "friend" as const,
+          text: friend.username === "SharpSlayer_88" 
+            ? "Yo! Just checked the AI parameters for the spread... what's your model projecting?"
+            : friend.username === "Quantum_Pro"
+            ? "Analytical accuracy hit rate is sitting comfortable at 84% today. Ready to build a joint Syndicate consensus?"
+            : `Hey! Good to connect with you. Let's make some accurate forecasts today.`,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ];
+      setChatMessages(prev => ({
+        ...prev,
+        [friend.username]: initialMsgs
+      }));
+    }
+  };
+
+  const handleSendChatMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!chatInput.trim() || !activeChatFriend) return;
+
+    const userMsg = {
+      sender: "me" as const,
+      text: chatInput.trim(),
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+
+    const buddy = activeChatFriend.username;
+    const currentMsgs = chatMessages[buddy] || [];
+    const updatedMsgs = [...currentMsgs, userMsg];
+
+    setChatMessages(prev => ({
+      ...prev,
+      [buddy]: updatedMsgs
+    }));
+
+    const textToMatch = chatInput.toLowerCase();
+    setChatInput("");
+
+    // Simulate real friend response after 1 second!
+    setTimeout(() => {
+      let replyText = "Interesting perspective. Let's verify standard deviations vs our seasonal hit rate before submitting!";
+      if (textToMatch.includes("odds") || textToMatch.includes("predict") || textToMatch.includes("model") || textToMatch.includes("bet")) {
+        replyText = "Yeah, I am running a multi-variance simulation now. My Rest Coefficient model is favoring Chiefs by 3.";
+      } else if (textToMatch.includes("hello") || textToMatch.includes("hi") || textToMatch.includes("hey")) {
+        replyText = "Hey! Good to see another pro analyst on the network directory. Let's make some high-value forecasts!";
+      } else if (textToMatch.includes("nudge") || textToMatch.includes("edge") || textToMatch.includes("streak")) {
+        replyText = "Received your nudge! Recalculating my team stamina impact logs. We're keeping this streak alive!";
+      } else if (textToMatch.includes("how are you") || textToMatch.includes("how's it going")) {
+        replyText = "Doing great! Reviewing injury reports and updating my dashboard widgets.";
+      }
+
+      setChatMessages(prev => ({
+        ...prev,
+        [buddy]: [
+          ...(prev[buddy] || []),
+          {
+            sender: "friend" as const,
+            text: replyText,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          }
+        ]
+      }));
+    }, 1000);
+  };
+
   // Initialize group members if Syndicate room is generated
   useEffect(() => {
     if (activeSyndicateRoom) {
@@ -44,11 +120,11 @@ export default function FriendsNetwork({ userProfile, onChangeProfile, userTier,
   }, [toastMessage]);
 
   // Load friends from local profile or Firestore if available
-  const friendsList = (userProfile as any).friends || [
+  const friendsList = (userProfile as any).friends || (userProfile.uid === "guest" ? [
     { username: "SharpSlayer_88", status: "accepted", level: 12, streak: 5, tier: "pro", incoming: false },
     { username: "Quantum_Pro", status: "accepted", level: 8, streak: 3, tier: "plus", incoming: false },
     { username: "Mathematician_9", status: "pending", level: 4, streak: 0, tier: "free", incoming: true }
-  ] as Friend[];
+  ] : []) as Friend[];
 
   // Update cloud user friends state helper
   const updateFriendsInCloud = async (newFriends: Friend[]) => {
@@ -425,10 +501,8 @@ export default function FriendsNetwork({ userProfile, onChangeProfile, userTier,
                               <span>Nudge Edge</span>
                             </button>
                             <button
-                              onClick={() => {
-                                setToastMessage(`💬 Direct chat with @${friend.username} initialized.`);
-                              }}
-                              className="p-1 px-3 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-slate-400 hover:text-white transition text-[10px] flex items-center justify-center cursor-pointer"
+                              onClick={() => handleOpenChat(friend)}
+                              className="p-1 px-3 bg-indigo-600/10 hover:bg-indigo-650 border border-indigo-500/20 rounded-lg text-indigo-400 hover:text-white transition text-[10px] flex items-center justify-center cursor-pointer animate-pulse"
                               title="Send instant message"
                             >
                               <MessageSquare className="w-3.5 h-3.5" />
@@ -583,6 +657,80 @@ export default function FriendsNetwork({ userProfile, onChangeProfile, userTier,
 
           </div>
 
+        </div>
+      )}
+
+      {/* Real-time Friend Chat Modal Workspace */}
+      {activeChatFriend && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-indigo-500/20 rounded-[2.5rem] max-w-lg w-full overflow-hidden shadow-2xl flex flex-col h-[520px] animate-fade-in relative text-left">
+            <div className="absolute top-[-30%] left-[-30%] w-64 h-64 bg-indigo-600/5 rounded-full blur-3xl pointer-events-none" />
+            
+            {/* Header */}
+            <div className="p-5 border-b border-white/5 bg-slate-900/60 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full bg-indigo-600/20 border border-indigo-500/20 flex items-center justify-center font-extrabold text-indigo-400 text-sm font-sans uppercase">
+                    {activeChatFriend.username.slice(0, 2)}
+                  </div>
+                  <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-slate-950 rounded-full animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="font-extrabold text-white text-xs">@{activeChatFriend.username}</h4>
+                  <p className="text-[10px] text-slate-400 font-mono">
+                    Active • Level {activeChatFriend.level || 5} • {activeChatFriend.tier?.toUpperCase() || "FREE"}
+                  </p>
+                </div>
+              </div>
+              
+              <button 
+                onClick={() => setActiveChatFriend(null)}
+                className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 text-xs rounded-xl transition cursor-pointer"
+                title="Close Chat"
+              >
+                <XSquare className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Chat Messages Log */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 no-scrollbar bg-slate-950">
+              {(chatMessages[activeChatFriend.username] || []).map((msg, i) => {
+                const isMe = msg.sender === "me";
+                return (
+                  <div 
+                    key={i} 
+                    className={`flex flex-col max-w-[80%] ${isMe ? "ml-auto items-end" : "mr-auto items-start"}`}
+                  >
+                    <div className={`p-3.5 rounded-2xl text-xs leading-relaxed font-sans ${
+                      isMe 
+                        ? "bg-indigo-600 text-white rounded-br-none" 
+                        : "bg-slate-900 text-slate-250 border border-white/5 rounded-bl-none"
+                    }`}>
+                      {msg.text}
+                    </div>
+                    <span className="text-[8px] font-mono text-slate-500 mt-1">{msg.time}</span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Input submission footer */}
+            <form onSubmit={handleSendChatMessage} className="p-4 border-t border-white/5 bg-slate-900/40 flex gap-2">
+              <input 
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Type your strategic analysis response..."
+                className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white outline-none focus:border-indigo-550 font-sans font-medium"
+              />
+              <button 
+                type="submit"
+                className="px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl transition cursor-pointer flex items-center justify-center"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
         </div>
       )}
 

@@ -1,11 +1,13 @@
 import React, { useState, useRef } from "react";
 import { 
   Lock, Search, ShieldAlert, BadgeCheck, XSquare, HelpCircle, Sparkles, 
-  Download, FileText, Copy, Check, Info, Trash2, ArrowUpDown, RefreshCw, Camera
+  Download, FileText, Copy, Check, Info, Trash2, ArrowUpDown, RefreshCw, Camera,
+  Link
 } from "lucide-react";
 import { motion } from "motion/react";
 import { Prediction } from "../types";
 import html2canvas from "html2canvas";
+import { jsPDF } from "jspdf";
 
 interface PredictionVaultProps {
   userTier: "free" | "plus" | "pro" | "syndicate";
@@ -247,6 +249,44 @@ export default function PredictionVault({
     }
   };
 
+  const exportResolvedHistoryToCSV = () => {
+    try {
+      const resolved = allArchives.filter(
+        a => a.status !== "Pending" && a.status !== "Simulation Run"
+      );
+      if (resolved.length === 0) {
+        alert("There are no resolved prediction history entries to export.");
+        return;
+      }
+      
+      const headers = "id,matchup,sport,team_a,team_b,prob_a,prob_b,score,result,status,review,created_at\n";
+      const rows = resolved.map(a => {
+        const reviewText = a.review ? a.review.replace(/"/g, '""') : "";
+        const matchupClean = a.matchup ? a.matchup.replace(/"/g, '""') : "";
+        const teamAClean = a.teamA ? a.teamA.replace(/"/g, '""') : "";
+        const teamBClean = a.teamB ? a.teamB.replace(/"/g, '""') : "";
+        const statusClean = a.status ? a.status.replace(/"/g, '""') : "";
+        const scoreClean = a.score ? a.score.replace(/"/g, '""') : "";
+        const resultClean = a.result ? a.result.replace(/"/g, '""') : "";
+        return `"${a.id}","${matchupClean}","${a.sport}","${teamAClean}","${teamBClean}",${a.probA},${a.probB},"${scoreClean}","${resultClean}","${statusClean}","${reviewText}","${a.createdAt}"`;
+      }).join("\n");
+      
+      const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `ApexOdds_Resolved_History.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setExportFeedback("Resolved History CSV Exported!");
+      setTimeout(() => setExportFeedback(null), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const exportAsTXT = (a: any) => {
     try {
       const template = `
@@ -297,15 +337,181 @@ Search. Generated using Apex Quantum v3.5.
 * **Sport**: \`${a.sport}\`
 * **Odds Projections**: ${a.teamA} (**${a.probA}%**) vs ${a.teamB} (**${a.probB}%**)
 * **Expected Score**: \`${a.score}\`
-* **Real Outcome**: \`${a.result}\`
-* **Accuracy Status**: **${a.status}**
+* **Real Outcome**: \`${a.result || a.actualScore || "Pending"}\`
+* **Accuracy Status**: **${a.status || "unresolved"}**
 
-> **Tactical Summary**: ${a.review}
+> **Tactical Summary**: ${a.review || a.edgeDesc}
 *Grounding data compiled via Google AI Search. For educational sports telemetry analysis only.*`;
 
     navigator.clipboard.writeText(text);
     setCopyFeedbackId(a.id);
     setTimeout(() => setCopyFeedbackId(null), 3000);
+  };
+
+  const copyShareableLinkToClipboard = (a: any) => {
+    try {
+      const shareUrl = `https://apexodds.ai/share/pred-${a.id}?sport=${encodeURIComponent(a.sport || "PRO")}&matchup=${encodeURIComponent(a.matchup)}&odds=${a.probA}-${a.probB}&score=${encodeURIComponent(a.score)}`;
+      navigator.clipboard.writeText(shareUrl);
+      setCopyFeedbackId(a.id);
+      setExportFeedback("🔗 Shareable receipt link copied successfully!");
+      setTimeout(() => {
+        setCopyFeedbackId(null);
+        setExportFeedback(null);
+      }, 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const exportSinglePredictionPDF = (a: any) => {
+    try {
+      const doc = new jsPDF({
+        orientation: "portrait",
+        unit: "mm",
+        format: "a4"
+      });
+
+      // Branded Accent Banner
+      doc.setFillColor(15, 23, 42); // slate-900 / dark corporate
+      doc.rect(0, 0, 210, 38, "F");
+
+      // Branded dividing glowing line (Vibrant Indigo)
+      doc.setFillColor(99, 102, 241); // Indigo-500
+      doc.rect(0, 38, 210, 1.5, "F");
+
+      // Typography Title
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(16);
+      doc.setTextColor(255, 255, 255);
+      doc.text("APEXODDS // PROJECTION RECEIPT", 15, 16);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(8);
+      doc.setTextColor(156, 163, 175);
+      doc.text(`ID: ${a.id}  |  GENERATED STAMP: ${new Date().toLocaleDateString()}`, 15, 24);
+      doc.text("SECURITY CLASSIFICATION: ENCRYPTED MULTI-VARIANCE ESTIMATES", 15, 29);
+
+      // Main content
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(15, 23, 42);
+      doc.text("I. FORECAST SUMMARY DATA", 15, 54);
+
+      doc.setDrawColor(226, 232, 240);
+      doc.setLineWidth(0.3);
+      doc.line(15, 56, 195, 56);
+
+      // Match details
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(9.5);
+      doc.setTextColor(71, 85, 105);
+      doc.text("Matchup:", 15, 64);
+      doc.setFont("Helvetica", "bold");
+      doc.setTextColor(15, 23, 42);
+      doc.text(a.matchup, 40, 64);
+
+      doc.setFont("Helvetica", "bold");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Sport Group:", 15, 70);
+      doc.setFont("Helvetica", "normal");
+      doc.setTextColor(51, 65, 85);
+      doc.text(a.sport || "NFL Pro", 40, 70);
+
+      doc.setFont("Helvetica", "bold");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Model Projections:", 15, 76);
+      doc.setFont("Helvetica", "normal");
+      doc.setTextColor(51, 65, 85);
+      doc.text(`${a.teamA} (${a.probA}%) vs ${a.teamB} (${a.probB}%)`, 40, 76);
+
+      doc.setFont("Helvetica", "bold");
+      doc.setTextColor(71, 85, 105);
+      doc.text("Expected Score:", 15, 82);
+      doc.setFont("Helvetica", "bold");
+      doc.setTextColor(79, 70, 229);
+      doc.text(a.score, 40, 82);
+
+      // Section II: Analysis & Grounding
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(12);
+      doc.setTextColor(15, 23, 42);
+      doc.text("II. QUANTUM MODEL BRIEFING SYNOPSIS", 15, 96);
+      doc.line(15, 98, 195, 98);
+
+      let textY = 106;
+      doc.setFont("Helvetica", "italic");
+      doc.setFontSize(9);
+      doc.setTextColor(51, 65, 85);
+      const brainNotes = a.edgeDesc || "Stable core metrics compiled.";
+      const wrappedNotes = doc.splitTextToSize(brainNotes, 175);
+      doc.text(wrappedNotes, 15, textY);
+      textY += (wrappedNotes.length * 5) + 4;
+
+      doc.setFont("Helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(71, 85, 105);
+      const markdownClean = a.markdownAnalysis?.replace(/\n/g, " ") || "No extended report narrative provided.";
+      const wrappedMD = doc.splitTextToSize(markdownClean, 175);
+      doc.text(wrappedMD, 15, textY);
+      textY += (wrappedMD.length * 5) + 12;
+
+      // Section III: Outcomes (if resolved)
+      if (a.status === "resolved") {
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.text("III. EX-POST MATCH AUDIT RESULTS", 15, textY);
+        doc.line(15, textY + 2, 195, textY + 2);
+        textY += 10;
+
+        doc.setFont("Helvetica", "bold");
+        doc.setFontSize(9.5);
+        doc.setTextColor(71, 85, 105);
+        doc.text("Actual Game Score:", 15, textY);
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(15, 23, 42);
+        doc.text(a.actualScore || a.result || "N/A", 48, textY);
+        textY += 6;
+
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(71, 85, 105);
+        doc.text("Accuracy Status:", 15, textY);
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(a.actualOutcome === "correct" ? 16 : 239, a.actualOutcome === "correct" ? 185 : 68, a.actualOutcome === "correct" ? 129 : 68);
+        doc.text((a.actualOutcome || "resolved").toUpperCase(), 48, textY);
+        textY += 6;
+
+        doc.setFont("Helvetica", "bold");
+        doc.setTextColor(71, 85, 105);
+        doc.text("Post-Match Review:", 15, textY);
+        doc.setFont("Helvetica", "normal");
+        doc.setTextColor(51, 65, 85);
+        const reviewTxt = a.review || "Model validation logs match telemetry parameters.";
+        const wrappedReview = doc.splitTextToSize(reviewTxt, 145);
+        doc.text(wrappedReview, 48, textY);
+      }
+
+      // Branded corporate footer on bottom
+      doc.setFillColor(15, 23, 42);
+      doc.rect(0, 285, 210, 12, "F");
+
+      doc.setFont("Helvetica", "bold");
+      doc.setFontSize(7.5);
+      doc.setTextColor(255, 255, 255);
+      doc.text("APEXODDS ANALYTICAL INC. CONFIDENTIAL.", 15, 292);
+
+      doc.setFont("Helvetica", "normal");
+      doc.setTextColor(156, 163, 175);
+      doc.text("VERIFICATION PORT: v3.59-C", 160, 292);
+
+      doc.save(`ApexOdds_Receipt_${a.id}.pdf`);
+      setExportFeedback("Prediction PDF Dossier Saved!");
+      setTimeout(() => setExportFeedback(null), 3000);
+    } catch (err) {
+      console.error(err);
+      setExportFeedback("Failed to compile pdf.");
+      setTimeout(() => setExportFeedback(null), 3000);
+    }
   };
 
   // AUTOMATED OUTCOME GENERATOR (Live Oracle Simulator)
@@ -458,6 +664,15 @@ Search. Generated using Apex Quantum v3.5.
           >
             <Download className="w-4 h-4 shrink-0" />
             <span>Export Active (CSV)</span>
+          </button>
+
+          <button
+            onClick={exportResolvedHistoryToCSV}
+            className="px-4 py-3 rounded-2xl bg-amber-500 hover:bg-amber-400 border border-amber-500/30 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition shadow-md shadow-amber-500/10"
+            title="Download resolved prediction history as a CSV file"
+          >
+            <Download className="w-4 h-4 shrink-0" />
+            <span>Export Resolved (CSV)</span>
           </button>
 
           <button
@@ -622,35 +837,42 @@ Search. Generated using Apex Quantum v3.5.
                       </td>
                       
                       {/* Portfolio Exports */}
-                      <td className="py-4 px-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="py-4 px-4 text-right border-l border-white/5">
+                        <div className="flex items-center justify-end gap-1.5 dynamic-export-buttons">
+                          <button 
+                            onClick={() => copyShareableLinkToClipboard(archive)}
+                            className="p-2 rounded bg-emerald-600/15 hover:bg-emerald-600 hover:text-white border border-emerald-500/20 text-emerald-450 cursor-pointer transition flex items-center justify-center"
+                            title="Copy Shareable Link to Board"
+                          >
+                            <Link className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => exportSinglePredictionPDF(archive)}
+                            className="p-2 rounded bg-indigo-500/15 hover:bg-indigo-600 hover:text-white border border-indigo-500/20 text-indigo-400 cursor-pointer transition flex items-center justify-center"
+                            title="Export beautiful single-match PDF receipt"
+                          >
+                            <FileText className="w-3.5 h-3.5 text-indigo-400" />
+                          </button>
                           <button 
                             onClick={() => openSocialCardStudio(archive)}
-                            className="p-2 rounded bg-indigo-600/25 hover:bg-indigo-600 hover:text-white border border-indigo-500/30 text-indigo-400 cursor-pointer transition flex items-center justify-center"
+                            className="p-2 rounded bg-indigo-600/25 hover:bg-indigo-600 hover:text-white border border-indigo-500/30 text-indigo-400 cursor-pointer transition flex items-center justify-center animate-pulse"
                             title="Export beautiful Social Media Sharing PNG Card"
                           >
                             <Camera className="w-3.5 h-3.5" />
                           </button>
                           <button 
                             onClick={() => copyMarkdownToClipboard(archive)}
-                            className="p-2 rounded bg-slate-950 hover:bg-slate-850 hover:text-white border border-slate-800 text-slate-400 cursor-pointer transition"
+                            className="p-2 rounded bg-slate-950 hover:bg-slate-850 hover:text-white border border-slate-800 text-slate-400 cursor-pointer transition flex items-center justify-center"
                             title="Copy Markdown Report Brief"
                           >
                             {copyFeedbackId === archive.id ? <Check className="w-3.5 h-3.5 text-emerald-400 font-bold" /> : <Copy className="w-3.5 h-3.5" />}
                           </button>
                           <button 
                             onClick={() => exportToCSV(archive)}
-                            className="p-2 rounded bg-slate-950 hover:bg-slate-850 hover:text-white border border-slate-800 text-slate-400 cursor-pointer transition"
+                            className="p-2 rounded bg-slate-950 hover:bg-slate-850 hover:text-white border border-slate-800 text-slate-400 cursor-pointer transition flex items-center justify-center"
                             title="Export to CSV Format"
                           >
                             <Download className="w-3.5 h-3.5" />
-                          </button>
-                          <button 
-                            onClick={() => exportAsTXT(archive)}
-                            className="p-2 rounded bg-indigo-600/10 hover:bg-indigo-600 hover:text-white border border-indigo-500/20 text-indigo-400 cursor-pointer transition"
-                            title="Download Full Text Dossier"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </td>

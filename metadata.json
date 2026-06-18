@@ -1,0 +1,6 @@
+{
+  "name": "ApexOdds Quantum",
+  "description": "Next-generation sports analytics and simulation platform equipped with the Quantum Odds Engine v3.5, search-grounded predictive modeling, and Monte Carlo simulators.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1173,37 +1173,264 @@ export default function PredictionsSandbox({
                   const competitors = prediction ? prediction.matchup.split(/vs\.?|@/i) : [];
                   const tA = competitors[0]?.trim() || (prediction ? prediction.teamA : "Home Team");
                   const tB = competitors[1]?.trim() || (prediction ? prediction.teamB : "Away Team");
+                  const currentSport = prediction ? prediction.sport : sport;
 
-                  const getDynamicPlayer = (teamName: string) => {
-                    const norm = teamName.toLowerCase();
-                    if (norm.includes("chiefs") || norm.includes("kc")) {
-                      return { name: "Patrick Mahomes", injury: "Backache Stiffness", status: "Active / Weary", impact: "-2.8% passing edge" };
+                  const getDynamicPlayer = (teamName: string, sportName: string) => {
+                    const normTeam = teamName.toLowerCase();
+                    const normSport = (sportName || "NFL").toUpperCase();
+
+                    // NFL
+                    if (normSport === "NFL") {
+                      if (normTeam.includes("chiefs") || normTeam.includes("kansas")) {
+                        return { name: "Patrick Mahomes", injury: "Ankle Soreness", status: "Probable / Active", impact: "-1.8% passing mobility" };
+                      }
+                      if (normTeam.includes("49ers") || normTeam.includes("san fran")) {
+                        return { name: "Christian McCaffrey", injury: "Achilles Tendonitis", status: "Questionable", impact: "-5.4% explosive agility" };
+                      }
+                      if (normTeam.includes("bills") || normTeam.includes("buffalo")) {
+                        return { name: "Josh Allen", injury: "Shoulder Impingement", status: "Probable / Active", impact: "-2.1% throwing velocity" };
+                      }
+                      if (normTeam.includes("ravens") || normTeam.includes("baltimore")) {
+                        return { name: "Lamar Jackson", injury: "Knee Contusion", status: "Probable / Active", impact: "-3.0% rushing acceleration" };
+                      }
+                      if (normTeam.includes("eagles") || normTeam.includes("philadelphia")) {
+                        return { name: "A.J. Brown", injury: "Hamstring Tightness", status: "Questionable", impact: "-4.2% reception separation" };
+                      }
+                      if (normTeam.includes("bengals") || normTeam.includes("cincinnati")) {
+                        return { name: "Joe Burrow", injury: "Wrist Soreness", status: "Probable / Active", impact: "-1.5% release latency" };
+                      }
+                      if (normTeam.includes("dolphins") || normTeam.includes("miami")) {
+                        return { name: "Tyreek Hill", injury: "Wrist Soreness", status: "Probable / Active", impact: "-2.2% breakaway gear" };
+                      }
+                      return { name: `${teamName} Quarterback`, injury: "Shoulder Fatigue", status: "Probable / Active", impact: "-3.5% conversion margin" };
                     }
-                    if (norm.includes("49ers") || norm.includes("sf")) {
-                      return { name: "Christian McCaffrey", injury: "Hamstring Strain", status: "Questionable", impact: "-6.2% ground conversion" };
+
+                    // NBA
+                    if (normSport === "NBA") {
+                      if (normTeam.includes("celtics") || normTeam.includes("boston")) {
+                        return { name: "Kristaps Porzingis", injury: "Soleus Strain", status: "Questionable", impact: "-6.2% rim protection" };
+                      }
+                      if (normTeam.includes("knicks") || normTeam.includes("new york")) {
+                        return { name: "Jalen Brunson", injury: "Foot Soreness", status: "Active / Weary", impact: "-3.8% isolation efficiency" };
+                      }
+                      if (normTeam.includes("lakers") || normTeam.includes("los angeles")) {
+                        return { name: "Anthony Davis", injury: "Achilles Soreness", status: "Questionable", impact: "-4.5% defensive coverage" };
+                      }
+                      if (normTeam.includes("warriors") || normTeam.includes("golden state")) {
+                        return { name: "Stephen Curry", injury: "Ankle Sprain", status: "Probable / Active", impact: "-3.1% off-ball relocation" };
+                      }
+                      if (normTeam.includes("mavericks") || normTeam.includes("dallas")) {
+                        return { name: "Luka Doncic", injury: "Knee Contusion", status: "Probable / Active", impact: "-2.8% playmaking pace" };
+                      }
+                      if (normTeam.includes("bucks") || normTeam.includes("milwaukee")) {
+                        return { name: "Giannis Antetokounmpo", injury: "Calf Strain", status: "Questionable", impact: "-7.0% paint penetration" };
+                      }
+                      return { name: `${teamName} Starting Guard`, injury: "Groin Strain", status: "Questionable", impact: "-4.0% perimeter speed" };
                     }
-                    if (norm.includes("bills") || norm.includes("buf")) {
-                      return { name: "Josh Allen", injury: "Shoulder Impingement", status: "Doubtful", impact: "-5.0% explosive release" };
+
+                    // Soccer / Football
+                    if (normSport === "SOCCER" || normSport === "FOOTBALL") {
+                      if (normTeam.includes("madrid") || normTeam.includes("real")) {
+                        return { name: "Kylian Mbappé", injury: "Hamstring Strain", status: "Probable / Active", impact: "-2.5% acceleration threshold" };
+                      }
+                      if (normTeam.includes("barcelona") || normTeam.includes("barca")) {
+                        return { name: "Frenkie de Jong", injury: "Ankle Soreness", status: "Questionable", impact: "-4.8% distribution control" };
+                      }
+                      if (normTeam.includes("city") || normTeam.includes("manchester")) {
+                        return { name: "Kevin De Bruyne", injury: "Thigh Fatigue", status: "Questionable", impact: "-5.3% key-pass output" };
+                      }
+                      if (normTeam.includes("liverpool")) {
+                        return { name: "Mohamed Salah", injury: "Hamstring Tightness", status: "Probable / Active", impact: "-2.0% finishing accuracy" };
+                      }
+                      if (normTeam.includes("arsenal")) {
+                        return { name: "Martin Ødegaard", injury: "Ankle Sprain", status: "Active / Weary", impact: "-3.5% pressing stamina" };
+                      }
+                      return { name: `${teamName} Midfielder`, injury: "Calf Soreness", status: "Questionable", impact: "-3.8% coverage area" };
                     }
-                    if (norm.includes("celtics") || norm.includes("bos")) {
-                      return { name: "Jayson Tatum", injury: "Ankle Sprain", status: "Questionable", impact: "-3.1% perimeter drive" };
+
+                    // MLB
+                    if (normSport === "MLB") {
+                      if (normTeam.includes("dodgers") || normTeam.includes("los angeles")) {
+                        return { name: "Shohei Ohtani", injury: "Shoulder Subluxation", status: "Active / Weary", impact: "-2.8% exit velocity" };
+                      }
+                      if (normTeam.includes("yankees") || normTeam.includes("new york")) {
+                        return { name: "Aaron Judge", injury: "Abductor Tightness", status: "Probable / Active", impact: "-2.0% launch angle" };
+                      }
+                      return { name: `${teamName} Starting Pitcher`, injury: "Elbow Soreness", status: "Questionable", impact: "-5.0% spin rate velocity" };
                     }
-                    if (norm.includes("knicks") || norm.includes("ny")) {
-                      return { name: "Jalen Brunson", injury: "Foot Soreness", status: "Doubtful", impact: "-7.4% playmaking margin" };
+
+                    // NHL
+                    if (normSport === "NHL") {
+                      if (normTeam.includes("oilers") || normTeam.includes("edmonton")) {
+                        return { name: "Connor McDavid", injury: "Lower Body Ailment", status: "Probable / Active", impact: "-3.0% turn acceleration" };
+                      }
+                      return { name: `${teamName} Starting Netminder`, injury: "Groin Volatility", status: "Questionable", impact: "-6.2% side-to-side recovery" };
                     }
-                    if (norm.includes("ravens") || norm.includes("bal")) {
-                      return { name: "Lamar Jackson", injury: "Knee Hyperextension", status: "Questionable", impact: "-4.5% rushing conversion" };
+
+                    // UFC
+                    if (normSport === "UFC" || normSport === "MMA") {
+                      return { name: `${teamName} Core Fighter`, injury: "Weight Cut Fatigue", status: "Active", impact: "-4.5% cardio stamina in late rounds" };
                     }
-                    if (norm.includes("eagles") || norm.includes("phi")) {
-                      return { name: "A.J. Brown", injury: "Adductor Tightness", status: "Questionable", impact: "-3.8% third-down reception" };
+
+                    // F1 / Racing
+                    if (normSport === "F1" || normSport.includes("RAC")) {
+                      return { name: `${teamName} Lead Driver`, injury: "Neck Strain", status: "Probable / Active", impact: "-1.8% reflex cornering split" };
                     }
-                    return { name: `${teamName} Captain`, injury: "Quadriceps Tendonitis", status: "Questionable", impact: "-4.0% physical threshold" };
+
+                    // Cricket
+                    if (normSport === "CRICKET") {
+                      return { name: `${teamName} Bowler`, injury: "Side Strain", status: "Questionable", impact: "-5.2% bowling delivery speed" };
+                    }
+
+                    return { name: `${teamName} Key Athlete`, injury: "Quadriceps Tendonitis", status: "Questionable", impact: "-4.0% physical threshold" };
                   };
 
                   const injuries = {
-                    playerA: getDynamicPlayer(tA),
-                    playerB: getDynamicPlayer(tB)
+                    playerA: getDynamicPlayer(tA, currentSport),
+                    playerB: getDynamicPlayer(tB, currentSport)
                   };
+
+                  const getHistoricalH2H = (sportName: string, teamA: string, teamB: string) => {
+                    const norm = (sportName || "NFL").toUpperCase();
+                    
+                    let events = [
+                      { name: "Apex Fall Tournament", season: "Season 2025" },
+                      { name: "Conference Semi-Finals", season: "Season 2024" },
+                      { name: "Regular Season Showcase", season: "Season 2024" }
+                    ];
+                    
+                    let scores = [
+                      { win: "tA", scoreA: 27, scoreB: 24 },
+                      { win: "tB", scoreA: 17, scoreB: 31 },
+                      { win: "tA", scoreA: 20, scoreB: 13 }
+                    ];
+                    
+                    let splitText = `3 - 2 Favoring ${teamA}`;
+
+                    if (norm === "NBA") {
+                      events = [
+                        { name: "Conference Finals Game 6", season: "Season 2025" },
+                        { name: "Mid-Season Classic", season: "Season 2024" },
+                        { name: "Regular Season Series", season: "Season 2024" }
+                      ];
+                      scores = [
+                        { win: "tA", scoreA: 114, scoreB: 110 },
+                        { win: "tB", scoreA: 98, scoreB: 104 },
+                        { win: "tA", scoreA: 121, scoreB: 115 }
+                      ];
+                      splitText = `3 - 2 Favoring ${teamA}`;
+                    } else if (norm === "SOCCER" || norm === "FOOTBALL") {
+                      events = [
+                        { name: "Champions League Quarterfinal", season: "Season 2025" },
+                        { name: "Apex League Derby", season: "Season 2024" },
+                        { name: "Pre-Season Cup Clash", season: "Season 2024" }
+                      ];
+                      scores = [
+                        { win: "tA", scoreA: 2, scoreB: 1 },
+                        { win: "tB", scoreA: 0, scoreB: 2 },
+                        { win: "tA", scoreA: 3, scoreB: 2 }
+                      ];
+                      splitText = `3 - 2 Favoring ${teamA}`;
+                    } else if (norm === "MLB" || norm.includes("BASE")) {
+                      events = [
+                        { name: "Apex World Series Game 3", season: "Season 2025" },
+                        { name: "Summer Rivalry Series", season: "Season 2024" },
+                        { name: "Spring Training Opener", season: "Season 2024" }
+                      ];
+                      scores = [
+                        { win: "tA", scoreA: 5, scoreB: 3 },
+                        { win: "tB", scoreA: 2, scoreB: 6 },
+                        { win: "tA", scoreA: 8, scoreB: 4 }
+                      ];
+                      splitText = `4 - 1 Favoring ${teamA}`;
+                    } else if (norm === "NHL") {
+                      events = [
+                        { name: "Stanley Cup Showdown", season: "Season 2025" },
+                        { name: "Eastern Conference Clash", season: "Season 2024" },
+                        { name: "Regular Season Showcase", season: "Season 2024" }
+                      ];
+                      scores = [
+                        { win: "tA", scoreA: 4, scoreB: 3 },
+                        { win: "tB", scoreA: 2, scoreB: 5 },
+                        { win: "tA", scoreA: 3, scoreB: 1 }
+                      ];
+                      splitText = `3 - 2 Favoring ${teamA}`;
+                    } else if (norm === "UFC" || norm.includes("MMA")) {
+                      events = [
+                        { name: "Apex PPV Main Event", season: "Season 2025" },
+                        { name: "Championship Undercard", season: "Season 2024" },
+                        { name: "Contender Series Finale", season: "Season 2024" }
+                      ];
+                      scores = [
+                        { win: "tA", scoreA: 3, scoreB: 0 },
+                        { win: "tB", scoreA: 1, scoreB: 2 },
+                        { win: "tA", scoreA: 2, scoreB: 1 }
+                      ];
+                      splitText = `2 - 1 Favoring ${teamA}`;
+                    } else if (norm === "F1" || norm.includes("RAC")) {
+                      events = [
+                        { name: "Grand Prix Peak Qualifying", season: "Season 2025" },
+                        { name: "Sprint Finish Decider", season: "Season 2024" },
+                        { name: "Apex Shootout Exhibition", season: "Season 2024" }
+                      ];
+                      scores = [
+                        { win: "tA", scoreA: 1, scoreB: 3 },
+                        { win: "tB", scoreA: 4, scoreB: 2 },
+                        { win: "tA", scoreA: 1, scoreB: 2 }
+                      ];
+                      splitText = `${teamA} Leads 2 - 1 in Pole positions`;
+                    } else if (norm === "CRICKET") {
+                      events = [
+                        { name: "Apex Test Series Leg 1", season: "Season 2025" },
+                        { name: "Apex T20 Super Cup", season: "Season 2024" },
+                        { name: "Apex One-Day Showcase", season: "Season 2024" }
+                      ];
+                      scores = [
+                        { win: "tA", scoreA: 284, scoreB: 271 },
+                        { win: "tB", scoreA: 152, scoreB: 155 },
+                        { win: "tA", scoreA: 310, scoreB: 288 }
+                      ];
+                      splitText = `3 - 2 Favoring ${teamA}`;
+                    } else {
+                      events = [
+                        { name: "Apex National Championship", season: "Season 2025" },
+                        { name: "Apex Regional Classic", season: "Season 2024" },
+                        { name: "Apex Invitational Showcase", season: "Season 2024" }
+                      ];
+                      scores = [
+                        { win: "tA", scoreA: 24, scoreB: 21 },
+                        { win: "tB", scoreA: 14, scoreB: 28 },
+                        { win: "tA", scoreA: 19, scoreB: 15 }
+                      ];
+                      splitText = `3 - 2 Favoring ${teamA}`;
+                    }
+
+                    return {
+                      splitText,
+                      matches: [
+                        {
+                          title: events[0].name,
+                          season: events[0].season,
+                          scoreText: `${teamA} ${scores[0].scoreA} - ${scores[0].scoreB} ${teamB}`,
+                          win: scores[0].win === "tA"
+                        },
+                        {
+                          title: events[1].name,
+                          season: events[1].season,
+                          scoreText: `${teamB} ${scores[1].scoreB} - ${scores[1].scoreA} ${teamA}`,
+                          win: scores[1].win === "tA"
+                        },
+                        {
+                          title: events[2].name,
+                          season: events[2].season,
+                          scoreText: `${teamA} ${scores[2].scoreA} - ${scores[2].scoreB} ${teamB}`,
+                          win: scores[2].win === "tA"
+                        }
+                      ]
+                    };
+                  };
+
+                  const h2h = getHistoricalH2H(currentSport, tA, tB);
 
                   return (
                     <div className="space-y-6">
@@ -1270,36 +1497,21 @@ export default function PredictionsSandbox({
 
                         <div className="flex justify-between items-center text-[10px] font-mono font-bold uppercase p-2.5 bg-black/40 rounded-xl border border-white/5">
                           <span className="text-slate-400">Past Match Split</span>
-                          <span className="text-indigo-400">3 - 2 Favoring {tA}</span>
+                          <span className="text-indigo-400">{h2h.splitText}</span>
                         </div>
 
                         <div className="space-y-2 text-[11px] font-sans">
-                          {/* Match 1 */}
-                          <div className="p-2.5 bg-slate-950/80 rounded-xl border border-white/5 flex justify-between items-center">
-                            <div>
-                              <span className="text-slate-300 font-semibold block">Apex Fall Bowl Tournament</span>
-                              <span className="text-[10px] text-slate-500 block font-mono">Season 2025</span>
+                          {h2h.matches.map((m, idx) => (
+                            <div key={idx} className="p-2.5 bg-slate-950/80 rounded-xl border border-white/5 flex justify-between items-center">
+                              <div>
+                                <span className="text-slate-300 font-semibold block">{m.title}</span>
+                                <span className="text-[10px] text-slate-500 block font-mono">{m.season}</span>
+                              </div>
+                              <span className={`font-bold font-mono text-xs ${m.win ? "text-emerald-400" : "text-white"}`}>
+                                {m.scoreText}
+                              </span>
                             </div>
-                            <span className="text-emerald-400 font-bold font-mono text-xs">{tA} 27 - 24 {tB}</span>
-                          </div>
-
-                          {/* Match 2 */}
-                          <div className="p-2.5 bg-slate-950/80 rounded-xl border border-white/5 flex justify-between items-center">
-                            <div>
-                              <span className="text-slate-300 font-semibold block font-sans">Conference Semi-Finals</span>
-                              <span className="text-[10px] text-slate-500 block font-mono">Season 2024</span>
-                            </div>
-                            <span className="text-white font-mono text-xs">{tB} 31 - 17 {tA}</span>
-                          </div>
-
-                          {/* Match 3 */}
-                          <div className="p-2.5 bg-slate-950/80 rounded-xl border border-white/5 flex justify-between items-center">
-                            <div>
-                              <span className="text-slate-300 font-semibold block">Regular Season Showcase</span>
-                              <span className="text-[10px] text-slate-500 block font-mono">Season 2024</span>
-                            </div>
-                            <span className="text-emerald-400 font-bold font-mono text-xs">{tA} 20 - 13 {tB}</span>
-                          </div>
+                          ))}
                         </div>
                       </div>
 
