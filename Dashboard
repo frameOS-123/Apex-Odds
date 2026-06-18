@@ -1,0 +1,456 @@
+import React, { useState, useEffect } from "react";
+import { 
+  Target, Calendar, Zap, Activity, Flame, ShieldAlert, Sparkles, ArrowRight, Play,
+  GitCompare, XSquare, BrainCircuit, RefreshCw, BarChart2
+} from "lucide-react";
+import { Prediction } from "../types";
+
+interface DashboardProps {
+  initialized: boolean;
+  onInitializeWorkspace: () => void;
+  predictions: Prediction[];
+  onQuickAnalyze: (sport: string, matchup: string) => void;
+}
+
+export default function Dashboard({ initialized, onInitializeWorkspace, predictions, onQuickAnalyze }: DashboardProps) {
+  // Quick Compare states
+  const [compareModalTeams, setCompareModalTeams] = useState<{ teamA: string; teamB: string; sport: string } | null>(null);
+  const [offenseA, setOffenseA] = useState(80);
+  const [offenseB, setOffenseB] = useState(80);
+  const [defenseA, setDefenseA] = useState(80);
+  const [defenseB, setDefenseB] = useState(80);
+  const [formA, setFormA] = useState(80);
+  const [formB, setFormB] = useState(80);
+  const [coachA, setCoachA] = useState(80);
+  const [coachB, setCoachB] = useState(80);
+  const [isSimulating, setIsSimulating] = useState(false);
+
+  const getStableMetric = (nameA: string, nameB: string, multiplier: number, offset: number) => {
+    const sum = nameA.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) + 
+                nameB.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0) * multiplier;
+    return (sum % 20) + offset;
+  };
+
+  useEffect(() => {
+    if (compareModalTeams) {
+      const { teamA, teamB } = compareModalTeams;
+      setOffenseA(getStableMetric(teamA, teamB, 1, 75));
+      setOffenseB(getStableMetric(teamB, teamA, 2, 75));
+      setDefenseA(getStableMetric(teamA, teamB, 3, 75));
+      setDefenseB(getStableMetric(teamB, teamA, 4, 75));
+      setFormA(getStableMetric(teamA, teamB, 5, 75));
+      setFormB(getStableMetric(teamB, teamA, 6, 75));
+      setCoachA(getStableMetric(teamA, teamB, 7, 75));
+      setCoachB(getStableMetric(teamB, teamA, 8, 75));
+    }
+  }, [compareModalTeams]);
+
+  const recalculateCompareMetrics = () => {
+    setIsSimulating(true);
+    setTimeout(() => {
+      setOffenseA(Math.floor(Math.random() * 20) + 76);
+      setOffenseB(Math.floor(Math.random() * 20) + 76);
+      setDefenseA(Math.floor(Math.random() * 20) + 76);
+      setDefenseB(Math.floor(Math.random() * 20) + 76);
+      setFormA(Math.floor(Math.random() * 20) + 76);
+      setFormB(Math.floor(Math.random() * 20) + 76);
+      setCoachA(Math.floor(Math.random() * 20) + 76);
+      setCoachB(Math.floor(Math.random() * 20) + 76);
+      setIsSimulating(false);
+    }, 600);
+  };
+
+  const getVerdictText = () => {
+    if (!compareModalTeams) return "";
+    const powerA = (offenseA + defenseA + formA + coachA) / 4;
+    const powerB = (offenseB + defenseB + formB + coachB) / 4;
+    
+    if (powerA > powerB) {
+      return `Neural comparison filters strongly favor ${compareModalTeams.teamA} (Model delta: +${(powerA - powerB).toFixed(1)}%). High defensive indices paired with tactical rest cycles yield a secure home field probability advantage.`;
+    } else {
+      return `Comparative telemetry favors ${compareModalTeams.teamB} (Model delta: +${(powerB - powerA).toFixed(1)}%). Outstanding offensive output parameters and peak form values suggest potential underdog variance.`;
+    }
+  };
+
+  if (!initialized) {
+    return (
+      <div id="blank-workspace-container" className="py-12 flex items-center justify-center min-h-[60vh] select-none">
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-10 max-w-2xl text-center space-y-6 relative overflow-hidden">
+          <div className="absolute top-[-30%] left-[-30%] w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+          
+          <div className="w-16 h-16 rounded-2xl bg-indigo-550/10 flex items-center justify-center mx-auto border border-indigo-500/20">
+            <Sparkles className="w-8 h-8 text-indigo-400 animate-pulse" />
+          </div>
+
+          <div className="space-y-2">
+            <span className="bg-indigo-500/10 text-indigo-400 text-xs font-bold px-3 py-1 rounded-full uppercase tracking-widest border border-indigo-500/20">Canvas Engine Enabled</span>
+            <h2 className="text-3xl font-black text-white mt-4">Create Custom Workspace</h2>
+            <p className="text-slate-400 text-xs md:text-sm leading-relaxed max-w-md mx-auto">
+              Your analytics workspace is currently blank and ready. Deploy the modular design template to seed predictions, player indicators, and comparison tabs.
+            </p>
+          </div>
+
+          <button 
+            onClick={onInitializeWorkspace}
+            className="px-8 py-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black transition text-xs uppercase tracking-wider cursor-pointer"
+          >
+            Deploy Analytical Canvas
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 select-none">
+      
+      {/* Metrics Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-slate-900 border border-slate-800 hover:border-slate-705 px-6 py-6 rounded-3xl relative overflow-hidden transition-all duration-300">
+          <div className="absolute right-4 top-4 w-11 h-11 bg-indigo-500/10 rounded-2xl flex items-center justify-center border border-indigo-550/20">
+            <Target className="w-5 h-5 text-indigo-400" />
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">AI Model Accuracy</p>
+          <h3 className="text-2xl font-black text-white font-mono mt-2">84.2%</h3>
+          <span className="text-[9px] text-indigo-400 font-bold font-mono mt-1 inline-block">↑ 2.1% this session</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 hover:border-slate-705 px-6 py-6 rounded-3xl relative overflow-hidden transition-all duration-300">
+          <div className="absolute right-4 top-4 w-11 h-11 bg-indigo-500/10 rounded-2xl flex items-center justify-center border border-indigo-550/20">
+            <Calendar className="w-5 h-5 text-indigo-400" />
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Your Active Predictions</p>
+          <h3 className="text-2xl font-black text-white font-mono mt-2">{predictions.length}</h3>
+          <span className="text-[9px] text-indigo-400 font-bold font-mono mt-1 inline-block">Projections inside your vault</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 hover:border-slate-705 px-6 py-6 rounded-3xl relative overflow-hidden transition-all duration-300">
+          <div className="absolute right-4 top-4 w-11 h-11 bg-amber-500/10 rounded-2xl flex items-center justify-center border border-amber-550/20">
+            <Zap className="w-5 h-5 text-amber-400" />
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Accurate Match Spreads</p>
+          <h3 className="text-2xl font-black text-white font-mono mt-2">12 in a row</h3>
+          <span className="text-[9px] text-amber-400 font-bold font-mono mt-1 inline-block">🔥 Active Level Double XP</span>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 hover:border-slate-705 px-6 py-6 rounded-3xl relative overflow-hidden transition-all duration-300">
+          <div className="absolute right-4 top-4 w-11 h-11 bg-indigo-500/10 rounded-2xl flex items-center justify-center border border-indigo-550/20">
+            <Activity className="w-5 h-5 text-indigo-400" />
+          </div>
+          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Key Top Franchise</p>
+          <h3 className="text-2xl font-black text-white mt-2">NFL Pro</h3>
+          <span className="text-[9px] text-indigo-400 font-bold font-mono mt-1 inline-block">89.8% accurate predictions</span>
+        </div>
+      </div>
+
+      {/* Primary Predictions Row */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.8)] animate-pulse" />
+            <h3 className="text-base font-extrabold text-white tracking-wide uppercase">Active Matchup Predictions</h3>
+          </div>
+          <span className="text-[10px] text-slate-500 font-mono">Simulations complete</span>
+        </div>
+
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {predictions.map((p) => {
+            return (
+              <div 
+                key={p.id} 
+                className="bg-slate-900 border border-slate-800 hover:border-indigo-500/30 rounded-3xl p-6 transition-all duration-300 relative group overflow-hidden pb-[95px]"
+              >
+                {/* Floating Quick Compare button with adjusted z-index and spacing constraints */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setCompareModalTeams({ teamA: p.teamA, teamB: p.teamB, sport: p.sport });
+                  }}
+                  className="absolute right-4 bg-slate-950/90 hover:bg-indigo-600 hover:text-white text-indigo-400 px-2.5 py-1.5 rounded-xl border border-white/5 hover:border-indigo-400/40 transition-all duration-300 shadow-xl flex items-center gap-1.5 cursor-pointer z-10 hover:shadow-indigo-500/10"
+                  style={{ top: p.edgeLevel === "High" ? "36px" : "16px" }}
+                  title="Quick Side-by-Side Comparison"
+                >
+                  <GitCompare className="w-3.5 h-3.5 shrink-0" />
+                  <span className="text-[9px] uppercase font-mono font-bold tracking-wider">Quick Compare</span>
+                </button>
+
+                {p.edgeLevel === "High" && (
+                  <div className="absolute top-0 right-0 bg-indigo-600 text-white text-[9px] font-extrabold px-3 py-1 rounded-bl-xl tracking-wider uppercase font-mono shadow-sm">
+                    UPSET EDGE
+                  </div>
+                )}
+                
+                <div className="flex items-center gap-2 text-[10px] text-indigo-400 font-bold font-mono uppercase mb-4">
+                  <span>{p.sport}</span> • <span>LIVE TELEMETRY</span>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  <div className="flex justify-between items-center">
+                    <span className="text-white font-extrabold text-base">{p.teamA}</span>
+                    <span className="text-indigo-400 font-mono font-black text-base">{p.probA}%</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-slate-400 font-semibold">{p.teamB}</span>
+                    <span className="text-slate-400 font-mono">{p.probB}%</span>
+                  </div>
+
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded-2xl text-[10px] uppercase font-mono font-bold flex items-center justify-between text-left">
+                    <span>🏆 Winner Edge:</span>
+                    <span className="text-white font-extrabold">{p.probA >= p.probB ? p.teamA : p.teamB}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-center text-xs mb-4">
+                  <div className="bg-slate-950 p-2.5 rounded-2xl border border-slate-800">
+                    <p className="text-slate-500 text-[8px] font-bold uppercase tracking-wider">SCORE</p>
+                    <p className="text-white font-bold font-mono">{p.score}</p>
+                  </div>
+                  <div className="bg-slate-950 p-2.5 rounded-2xl border border-slate-800">
+                    <p className="text-slate-500 text-[8px] font-bold uppercase tracking-wider">AI CLUSTER</p>
+                    <p className="text-indigo-400 font-bold font-mono">{p.edgeLevel === "High" ? "S-TIER" : "A-TIER"}</p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => onQuickAnalyze(p.sport, p.matchup)}
+                  className="absolute bottom-6 left-6 right-6 bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-xl font-bold transition flex items-center justify-center gap-2 text-xs cursor-pointer shadow-sm"
+                >
+                  <span>Analyze Sandbox Weights</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Underdog / Injury Telemetry Shifts */}
+      <div className="grid lg:grid-cols-2 gap-8">
+        
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-850/80 pb-3">
+            <div className="flex items-center gap-2.5">
+              <Flame className="w-5 h-5 text-amber-400" />
+              <h4 className="font-extrabold text-white text-sm">Momentum Shifts & Upset Alarms</h4>
+            </div>
+            <span className="text-[9px] font-mono font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">HIGH RESOLUTION</span>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex justify-between items-center">
+              <div>
+                <h5 className="font-extrabold text-white text-xs">Dallas Cowboys</h5>
+                <p className="text-[10px] text-slate-450 mt-1">Spread value moving from -3.5 to -6.5. High risk variables registered.</p>
+              </div>
+              <span className="text-rose-450 bg-rose-500/10 border border-rose-500/20 px-2 py-0.5 rounded font-mono font-bold text-[9px]">High Risk</span>
+            </div>
+            <div className="p-3 bg-slate-950 rounded-2xl border border-slate-800 flex justify-between items-center">
+              <div>
+                <h5 className="font-extrabold text-white text-xs">Arsenal FC</h5>
+                <p className="text-[10px] text-slate-455 mt-1">Possession parameters projected at 68% against defensively crippled opponent.</p>
+              </div>
+              <span className="text-indigo-400 bg-indigo-500/10 border border-indigo-505/20 px-2 py-0.5 rounded font-mono font-bold text-[9px]">Optimal</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 space-y-4">
+          <div className="flex items-center justify-between border-b border-slate-850/80 pb-3">
+            <div className="flex items-center gap-2.5">
+              <ShieldAlert className="w-5 h-5 text-indigo-400" />
+              <h4 className="font-extrabold text-white text-sm">Real-time Player Injury Impacts</h4>
+            </div>
+            <span className="text-[9px] text-indigo-455 font-mono font-bold uppercase tracking-wider bg-indigo-500/10 border border-indigo-500/20 px-20 py-0.5 rounded">Dynamic Metric</span>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-[10px] font-mono font-bold text-slate-300">
+                <span>Patrick Mahomes Backache Rest Index</span>
+                <span className="text-rose-400 font-bold">CRITICAL DECREASE (-14%)</span>
+              </div>
+              <div className="h-1.5 bg-slate-950 rounded-full overflow-hidden">
+                <div className="h-full bg-rose-550" style={{ width: "84%" }} />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-[10px] font-mono font-bold text-slate-300">
+                <span>LeBron James Recuperation Ratio</span>
+                <span className="text-indigo-400 font-bold">OPTIMAL RATING (+8%)</span>
+              </div>
+              <div className="h-1.5 bg-slate-950 rounded-full overflow-hidden">
+                <div className="h-full bg-indigo-500" style={{ width: "32%" }} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Side-by-Side Quick Compare Modal */}
+      {compareModalTeams && (
+        <div className="fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4 overflow-y-auto">
+          <div className="bg-slate-950 border border-white/10 rounded-[2.5rem] p-6 md:p-8 max-w-4xl w-full space-y-6 relative overflow-hidden shadow-2xl animate-fade-in my-8">
+            <div className="absolute top-[-20%] left-[-20%] w-96 h-96 bg-indigo-600/5 rounded-full blur-3xl pointer-events-none" />
+            
+            {/* Modal Header */}
+            <div className="flex justify-between items-start border-b border-white/5 pb-5">
+              <div>
+                <span className="text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-widest bg-indigo-500/10 border border-indigo-500/20 px-3 py-1 rounded-full">
+                  {compareModalTeams.sport} • Real-time Lab Compare
+                </span>
+                <h3 className="text-xl md:text-2xl font-black text-white mt-2 flex items-center gap-2">
+                  <GitCompare className="w-5 h-5 text-indigo-400" />
+                  Side-by-Side Comparison Laboratory
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Active Comparison Matrix: <strong className="text-slate-200">{compareModalTeams.teamA}</strong> vs <strong className="text-slate-200">{compareModalTeams.teamB}</strong>
+                </p>
+              </div>
+              <button
+                onClick={() => setCompareModalTeams(null)}
+                className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2.5 rounded-xl transition cursor-pointer"
+                title="Close"
+              >
+                <XSquare className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Numerical Metrics Progress Bars side-by-side */}
+            <div className="grid md:grid-cols-2 gap-8 pt-2">
+              <div className="bg-slate-900/45 p-6 rounded-3xl border border-white/5 flex flex-col justify-between space-y-6">
+                <h4 className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5 border-b border-white/5 pb-2">
+                  <BarChart2 className="w-3.5 h-3.5 text-indigo-400" />
+                  Core Telemetry Comparison Indicators
+                </h4>
+
+                <div className="space-y-4">
+                  {/* Metric 1 */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-slate-300 font-semibold font-mono font-sans">
+                      <span>Offense Output Rating</span>
+                      <span className="text-indigo-400">{offenseA} vs {offenseB}</span>
+                    </div>
+                    <div className="h-2 bg-slate-950 rounded-full flex overflow-hidden p-0.5 border border-white/5">
+                      <div 
+                        className="bg-indigo-450 h-full rounded-l transition-all duration-500" 
+                        style={{ width: `${(offenseA / (offenseA + offenseB)) * 100}%` }}
+                      />
+                      <div 
+                        className="bg-indigo-650 h-full rounded-r transition-all duration-500" 
+                        style={{ width: `${(offenseB / (offenseA + offenseB)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Metric 2 */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-slate-300 font-semibold font-mono font-sans">
+                      <span>Defense Effectiveness Index</span>
+                      <span className="text-indigo-400">{defenseA} vs {defenseB}</span>
+                    </div>
+                    <div className="h-2 bg-slate-950 rounded-full flex overflow-hidden p-0.5 border border-white/5">
+                      <div 
+                        className="bg-indigo-450 h-full rounded-l transition-all duration-500" 
+                        style={{ width: `${(defenseA / (defenseA + defenseB)) * 105}%` }}
+                      />
+                      <div 
+                        className="bg-indigo-650 h-full rounded-r transition-all duration-500" 
+                        style={{ width: `${(defenseB / (defenseA + defenseB)) * 105}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Metric 3 */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-slate-300 font-semibold font-mono font-sans">
+                      <span>Form & Momentum Ratio</span>
+                      <span className="text-indigo-400">{formA} vs {formB}</span>
+                    </div>
+                    <div className="h-2 bg-slate-950 rounded-full flex overflow-hidden p-0.5 border border-white/5">
+                      <div 
+                        className="bg-indigo-450 h-full rounded-l transition-all duration-500" 
+                        style={{ width: `${(formA / (formA + formB)) * 100}%` }}
+                      />
+                      <div 
+                        className="bg-indigo-650 h-full rounded-r transition-all duration-500" 
+                        style={{ width: `${(formB / (formA + formB)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Metric 4 */}
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs text-slate-300 font-semibold font-mono font-sans">
+                      <span>Coaching Strategy Factor</span>
+                      <span className="text-indigo-400">{coachA} vs {coachB}</span>
+                    </div>
+                    <div className="h-2 bg-slate-950 rounded-full flex overflow-hidden p-0.5 border border-white/5">
+                      <div 
+                        className="bg-indigo-450 h-full rounded-l transition-all duration-500" 
+                        style={{ width: `${(coachA / (coachA + coachB)) * 100}%` }}
+                      />
+                      <div 
+                        className="bg-indigo-650 h-full rounded-r transition-all duration-500" 
+                        style={{ width: `${(coachB / (coachA + coachB)) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-4 text-[10px] uppercase tracking-wider font-bold text-slate-500 font-mono pt-3 border-t border-white/5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-indigo-450 block" />
+                    <span>{compareModalTeams.teamA}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded bg-indigo-650 block" />
+                    <span>{compareModalTeams.teamB}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic AI Verdict Panel */}
+              <div className="bg-slate-900/45 p-6 rounded-3xl border border-white/5 flex flex-col justify-between space-y-6">
+                <div className="space-y-3.5">
+                  <div className="flex items-center gap-2 border-b border-white/5 pb-2">
+                    <BrainCircuit className="w-4 h-4 text-indigo-400 animate-pulse" />
+                    <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 font-mono">AI Comparison Verdict Output</span>
+                  </div>
+                  {isSimulating ? (
+                    <div className="space-y-2 py-4 animate-pulse">
+                      <div className="h-4 bg-slate-800 rounded w-full" />
+                      <div className="h-4 bg-slate-800 rounded w-5/6" />
+                      <div className="h-4 bg-slate-800 rounded w-2/3" />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-300 leading-relaxed font-sans font-medium bg-black/40 p-4 rounded-2xl border border-white/5">
+                      {getVerdictText()}
+                    </p>
+                  )}
+                </div>
+
+                <button 
+                  onClick={recalculateCompareMetrics}
+                  disabled={isSimulating}
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-black py-4 rounded-xl text-xs transition shadow-md uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isSimulating ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" />
+                      <span>Re-compiling Parameters...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span>Compile Modal Laboratory</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
