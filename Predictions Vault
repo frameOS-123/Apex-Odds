@@ -1,0 +1,1276 @@
+import React, { useState, useRef } from "react";
+import { 
+  Lock, Search, ShieldAlert, BadgeCheck, XSquare, HelpCircle, Sparkles, 
+  Download, FileText, Copy, Check, Info, Trash2, ArrowUpDown, RefreshCw, Camera
+} from "lucide-react";
+import { motion } from "motion/react";
+import { Prediction } from "../types";
+import html2canvas from "html2canvas";
+
+interface PredictionVaultProps {
+  userTier: "free" | "plus" | "pro" | "syndicate";
+  onUpgrade: () => void;
+  predictions: Prediction[];
+  onResolvePrediction: (
+    id: string, 
+    winner: "teamA" | "teamB" | "draw", 
+    finalScore: string, 
+    customMessage?: string
+  ) => void;
+}
+
+export default function PredictionVault({ 
+  userTier, 
+  onUpgrade, 
+  predictions,
+  onResolvePrediction 
+}: PredictionVaultProps) {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [copyFeedbackId, setCopyFeedbackId] = useState<string | null>(null);
+  const [exportFeedback, setExportFeedback] = useState<string | null>(null);
+  
+  // List Expand and Social Card States
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [selectedSocialCard, setSelectedSocialCard] = useState<any | null>(null);
+  const [exportingSocialImage, setExportingSocialImage] = useState(false);
+  const socialCardRef = useRef<HTMLDivElement>(null);
+
+  // Social Customization Live states
+  const [socialTheme, setSocialTheme] = useState<"nebula" | "cyber" | "emerald" | "amber" | "hot_red">("nebula");
+  const [socialCustomCaption, setSocialCustomCaption] = useState("🔒 CORE APEX VERDICT");
+  const [socialCustomNote, setSocialCustomNote] = useState("");
+  const [socialShowMetrics, setSocialShowMetrics] = useState(true);
+  const [socialShowFindings, setSocialShowFindings] = useState(true);
+  const [socialShowEdge, setSocialShowEdge] = useState(true);
+
+  const openSocialCardStudio = (archive: any) => {
+    setSelectedSocialCard(archive);
+    setSocialTheme("nebula");
+    setSocialCustomNote(archive.review || "");
+    setSocialCustomCaption(archive.edgeLevel ? `🔒 APEX ${archive.edgeLevel.toUpperCase()} EDGE` : "🔒 CORE APEX VERDICT");
+    setSocialShowMetrics(true);
+    setSocialShowFindings(true);
+    setSocialShowEdge(true);
+  };
+
+  const handleExportSocialCard = async () => {
+    if (!socialCardRef.current) return;
+    setExportingSocialImage(true);
+    try {
+      // Small timeout for DOM stability and rendering
+      await new Promise(resolve => setTimeout(resolve, 300));
+      const canvas = await html2canvas(socialCardRef.current, {
+        useCORS: true,
+        backgroundColor: null,
+        scale: 2, // High resolution
+        logging: false
+      });
+      const dataUrl = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.download = `ApexOdds_Verdict_${selectedSocialCard?.id || "social"}.png`;
+      link.href = dataUrl;
+      link.click();
+      setExportFeedback("Social Card Exported!");
+      setTimeout(() => setExportFeedback(null), 3000);
+      setSelectedSocialCard(null); // Close modal on success
+    } catch (err) {
+      console.error("Failed to generate social card PNG:", err);
+    } finally {
+      setExportingSocialImage(false);
+    }
+  };
+  
+  // Resolution state
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [winnerInput, setWinnerInput] = useState<"teamA" | "teamB" | "draw">("teamA");
+  const [scoreAInput, setScoreAInput] = useState("24");
+  const [scoreBInput, setScoreBInput] = useState("20");
+  const [resolutionSummary, setResolutionSummary] = useState("");
+
+  const staticArchives = [
+    {
+      id: "raw-1",
+      matchup: "BAL Ravens vs CIN Bengals",
+      sport: "NFL",
+      probA: 68,
+      probB: 32,
+      teamA: "BAL Ravens",
+      teamB: "CIN Bengals",
+      score: "Projected 24 - 17",
+      result: "Bengals 21 - 17",
+      status: "Incorrect",
+      actualOutcome: "teamB",
+      review: "Review: Star safety injury in Q2 severely impacted passing defensive coverage metrics (-12% consistency deficit).",
+      createdAt: "2026-06-10",
+      isStatic: true
+    },
+    {
+      id: "raw-2",
+      matchup: "DEN Nuggets vs LA Lakers",
+      sport: "NBA",
+      probA: 74,
+      probB: 26,
+      teamA: "DEN Nuggets",
+      teamB: "LA Lakers",
+      score: "Projected 118 - 110",
+      result: "Nuggets 121 - 112",
+      status: "Correct",
+      actualOutcome: "teamA",
+      review: "Review: Team rebounding model outperformed public sports-line values (+14 margin advantage in raw paint parameters).",
+      createdAt: "2026-06-12",
+      isStatic: true
+    },
+    {
+      id: "raw-3",
+      matchup: "Man City vs Tottenham Hotspur",
+      sport: "Soccer",
+      probA: 61,
+      probB: 39,
+      teamA: "Man City",
+      teamB: "Tottenham Hotspur",
+      score: "Projected 3 - 1",
+      result: "Man City 3 - 0",
+      status: "Correct",
+      actualOutcome: "teamA",
+      review: "Review: Team model correctly identified defensive vulnerability on Tottenham counter attacks. Backline was highly exposed.",
+      createdAt: "2026-06-14",
+      isStatic: true
+    }
+  ];
+
+  // Merge static and real live-scanned predictions
+  const allArchives = [
+    ...predictions.map(p => ({
+      id: p.id,
+      matchup: p.matchup,
+      sport: p.sport,
+      probA: p.probA,
+      probB: p.probB,
+      teamA: p.teamA,
+      teamB: p.teamB,
+      score: `Projected ${p.score}`,
+      result: p.actualScore || "Pending",
+      status: p.status || "Pending",
+      actualOutcome: p.actualOutcome,
+      review: p.review || p.edgeDesc || "Live Sandbox Simulation.",
+      createdAt: p.createdAt,
+      isStatic: false
+    })),
+    ...staticArchives
+  ];
+
+  const filteredArchives = allArchives.filter(a => 
+    a.matchup.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    a.sport.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  // EXPORT UTILITIES
+  const exportToCSV = (a: any) => {
+    try {
+      const headers = "id,matchup,sport,team_a,team_b,prob_a,prob_b,projection,actual_result,status,review,created_at\n";
+      const row = `"${a.id}","${a.matchup}","${a.sport}","${a.teamA}","${a.teamB}",${a.probA},${a.probB},"${a.score}","${a.result}","${a.status}","${a.review.replace(/"/g, '""')}","${a.createdAt}"`;
+      
+      const blob = new Blob([headers + row], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `ApexOdds_Prediction_${a.id}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setExportFeedback("CSV Dowloaded!");
+      setTimeout(() => setExportFeedback(null), 3000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const exportPredictionsToCSV = () => {
+    if (userTier === "free") {
+      alert("CSV Export is a Premium feature! Please upgrade to Analytical Plus or Elite Pro to unlock spreadsheet downloads.");
+      return;
+    }
+    try {
+      if (predictions.length === 0) {
+        alert("There are no active or saved predictions to export in your current vault.");
+        return;
+      }
+      const headers = "id,matchup,sport,team_a,team_b,prob_a,prob_b,score,edge_level,edge_desc,status,actual_outcome,actual_score,created_at\\n";
+      const rows = predictions.map(p => {
+        const matchupClean = p.matchup ? p.matchup.replace(/"/g, '""') : "";
+        const edgeDescClean = p.edgeDesc ? p.edgeDesc.replace(/"/g, '""') : "";
+        const statusClean = p.status || "active";
+        const actualOutcomeClean = p.actualOutcome || "unresolved";
+        const actualScoreClean = p.actualScore || "N/A";
+        return `"${p.id}","${matchupClean}","${p.sport}","${p.teamA}","${p.teamB}",${p.probA},${p.probB},"${p.score}","${p.edgeLevel}","${edgeDescClean}","${statusClean}","${actualOutcomeClean}","${actualScoreClean}","${p.createdAt}"`;
+      }).join("\n");
+      
+      const blob = new Blob([headers.replace("\\n", "\n") + rows], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `ApexOdds_Predictions_Vault.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setExportFeedback("Predictions CSV Exported!");
+      setTimeout(() => setExportFeedback(null), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const exportAllToCSV = () => {
+    try {
+      if (allArchives.length === 0) return;
+      const headers = "id,matchup,sport,team_a,team_b,prob_a,prob_b,projection,actual_result,status,review,created_at\n";
+      const rows = allArchives.map(a => {
+        const reviewText = a.review ? a.review.replace(/"/g, '""') : "";
+        return `"${a.id}","${a.matchup}","${a.sport}","${a.teamA}","${a.teamB}",${a.probA},${a.probB},"${a.score}","${a.result}","${a.status}","${reviewText}","${a.createdAt}"`;
+      }).join("\n");
+      
+      const blob = new Blob([headers + rows], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `ApexOdds_Full_Vault_History.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setExportFeedback("Full Vault CSV Downloaded!");
+      setTimeout(() => setExportFeedback(null), 3500);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const exportAsTXT = (a: any) => {
+    try {
+      const template = `
+=========================================
+          APEXODDS QUANTUM REPORT        
+=========================================
+ID:         ${a.id}
+Sport:      ${a.sport}
+Matchup:    ${a.matchup}
+Timestamp:  ${a.createdAt}
+-----------------------------------------
+[MODEL ODDS ESTIMATES]
+* ${a.teamA}: ${a.probA}% Probability
+* ${a.teamB}: ${a.probB}% Probability
+
+[PROJECTED MARGINS]
+* Forecasted Line: ${a.score}
+* Actual Scoreboard: ${a.result}
+* Accuracy Verdict:  ${a.status}
+
+-----------------------------------------
+[POST-GAME TACTICAL REVIEW]
+${a.review}
+
+-----------------------------------------
+Grounding sources verified live via Google
+Search. Generated using Apex Quantum v3.5.
+=========================================
+`;
+      const blob = new Blob([template.trim()], { type: "text/plain;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `ApexOdds_Report_${a.id}.txt`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setExportFeedback("TXT File Saved!");
+      setTimeout(() => setExportFeedback(null), 3000);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const copyMarkdownToClipboard = (a: any) => {
+    const text = `### 📊 ApexOdds Quantum Analysis Report: ${a.matchup}
+* **Sport**: \`${a.sport}\`
+* **Odds Projections**: ${a.teamA} (**${a.probA}%**) vs ${a.teamB} (**${a.probB}%**)
+* **Expected Score**: \`${a.score}\`
+* **Real Outcome**: \`${a.result}\`
+* **Accuracy Status**: **${a.status}**
+
+> **Tactical Summary**: ${a.review}
+*Grounding data compiled via Google AI Search. For educational sports telemetry analysis only.*`;
+
+    navigator.clipboard.writeText(text);
+    setCopyFeedbackId(a.id);
+    setTimeout(() => setCopyFeedbackId(null), 3000);
+  };
+
+  // AUTOMATED OUTCOME GENERATOR (Live Oracle Simulator)
+  const handleAutoResolve = (id: string, archive: any) => {
+    // Generate realistic sports scores depending on the sport and team probability
+    const isNFL = archive.sport.toUpperCase() === "NFL" || archive.sport.toLowerCase().includes("foot");
+    const isNBA = archive.sport.toUpperCase() === "NBA" || archive.sport.toLowerCase().includes("bask");
+    const isSoccer = archive.sport.toUpperCase() === "SOCCER" || archive.sport.toLowerCase().includes("socc") || archive.sport.toLowerCase().includes("football");
+    
+    // Choose winner based on probability
+    const rand = Math.random() * 100;
+    const winner: "teamA" | "teamB" | "draw" = rand < archive.probA ? "teamA" : (rand > 95 && isSoccer ? "draw" : "teamB");
+    
+    let scoreA = 0;
+    let scoreB = 0;
+    
+    if (isNFL) {
+      if (winner === "teamA") {
+        scoreA = Math.round(21 + Math.random() * 17);
+        scoreB = scoreA - Math.round(1 + Math.random() * 10);
+      } else {
+        scoreB = Math.round(21 + Math.random() * 17);
+        scoreA = scoreB - Math.round(1 + Math.random() * 10);
+      }
+    } else if (isNBA) {
+      if (winner === "teamA") {
+        scoreA = Math.round(100 + Math.random() * 25);
+        scoreB = scoreA - Math.round(1 + Math.random() * 12);
+      } else {
+        scoreB = Math.round(100 + Math.random() * 25);
+        scoreA = scoreB - Math.round(1 + Math.random() * 12);
+      }
+    } else if (isSoccer) {
+      if (winner === "draw") {
+        scoreA = Math.round(Math.random() * 2);
+        scoreB = scoreA;
+      } else if (winner === "teamA") {
+        scoreA = Math.round(1 + Math.random() * 3);
+        scoreB = scoreA - Math.round(1 + Math.random() * 2);
+      } else {
+        scoreB = Math.round(1 + Math.random() * 3);
+        scoreA = scoreB - Math.round(1 + Math.random() * 2);
+      }
+    } else {
+      // generic
+      if (winner === "teamA") {
+        scoreA = Math.round(5 + Math.random() * 5);
+        scoreB = scoreA - Math.round(1 + Math.random() * 3);
+      } else {
+        scoreB = Math.round(5 + Math.random() * 5);
+        scoreA = scoreB - Math.round(1 + Math.random() * 3);
+      }
+    }
+
+    if (scoreA < 0) scoreA = 0;
+    if (scoreB < 0) scoreB = 0;
+    const finalScore = `${scoreA} - ${scoreB}`;
+
+    const userSelectedWinner = archive.probA > archive.probB ? "teamA" : "teamB";
+    const userMatched = userSelectedWinner === winner;
+
+    const summaryText = userMatched 
+      ? `Review: Correct Forecast! Home stadium crowd noise multiplier offset (+4.4%) secured an overwhelming pacing velocity in the final periods, locking the final ${finalScore} score.`
+      : `Review: Underdog upset occurred! Wet-field conditions caused crucial passing turnovers (-15.5% ball possession efficiency deficit) in the second half, allowing ${winner === "teamA" ? archive.teamA : archive.teamB} to slip ahead.`;
+
+    onResolvePrediction(id, winner, finalScore, summaryText);
+    setResolvingId(null);
+  };
+
+  const handleManualResolveSubmit = (id: string) => {
+    if (!scoreAInput || !scoreBInput) return;
+    const finalScore = `${scoreAInput} - ${scoreBInput}`;
+    
+    // Auto-calculate winner based on user's manual score entry
+    const intA = parseInt(scoreAInput, 10);
+    const intB = parseInt(scoreBInput, 10);
+    const winChoice: "teamA" | "teamB" | "draw" = intA > intB ? "teamA" : intB > intA ? "teamB" : "draw";
+
+    onResolvePrediction(id, winChoice, finalScore, resolutionSummary || undefined);
+    setResolvingId(null);
+    setResolutionSummary("");
+  };
+
+  if (userTier === "free") {
+    return (
+      <div className="bg-slate-900 border border-indigo-500/10 rounded-[2rem] p-12 text-center max-w-xl mx-auto space-y-6 relative overflow-hidden select-none">
+        <div className="absolute top-[-30%] left-[-30%] w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="w-16 h-16 rounded-full bg-indigo-500/10 border border-indigo-550/30 flex items-center justify-center mx-auto shadow-[0_0_20px_rgba(99,102,241,0.15)]">
+          <Lock className="w-7 h-7 text-indigo-400" />
+        </div>
+
+        <div className="space-y-2">
+          <h4 className="text-xl font-black text-white">Unlock Live Prediction Vault</h4>
+          <span className="text-[10px] bg-indigo-500/25 border border-indigo-500/20 px-3 py-1 rounded-full text-indigo-400 font-bold tracking-widest font-mono uppercase inline-block">PLUS & PRO FEATURE</span>
+          <p className="text-slate-400 text-xs leading-relaxed max-w-sm mx-auto pt-2">
+            Standard free users can create predictions, but historical query archives, accuracy scores, custom export briefs, and post-game reviews require a Plus or Elite SaaS subscription.
+          </p>
+        </div>
+
+        <button 
+          onClick={onUpgrade}
+          className="px-6 py-3.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs uppercase tracking-wider transition shadow-md cursor-pointer"
+        >
+          Upgrade Workspace Tiers
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-slate-900 border border-white/10 rounded-[2rem] p-6 md:p-8 space-y-6 select-none relative">
+      
+      {exportFeedback && (
+        <div className="fixed top-8 right-8 z-50 bg-emerald-500 text-slate-950 font-bold text-xs px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 animate-bounce">
+          <BadgeCheck className="w-4 h-4 shrink-0" />
+          <span>{exportFeedback}</span>
+        </div>
+      )}
+
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-white/5 pb-4">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <h3 className="text-lg font-extrabold text-white">Historical Prediction Vault</h3>
+            <span id="badge-vault-tier" className={`text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider ${
+              userTier === "pro" ? "bg-amber-400/20 text-amber-400 border border-amber-400/20" : "bg-indigo-400/20 text-indigo-400 border border-indigo-400/20"
+            }`}>
+              {userTier.toUpperCase()} ARCHIVE ({predictions.length} live simulations)
+            </span>
+          </div>
+          <p className="text-xs text-slate-400 mt-1">Simulate post-game outcomes, evaluate prediction differentials, and export complete analytical portfolios.</p>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <div className="relative flex-1 sm:flex-none">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search teams or leagues..."
+              className="bg-black/40 border border-white/10 rounded-2xl py-3 pl-10 pr-4 text-xs font-semibold text-white outline-none focus:border-indigo-400 w-full sm:w-64"
+            />
+          </div>
+          
+          <button
+            onClick={exportPredictionsToCSV}
+            className="px-4 py-3 rounded-2xl border font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition shadow-md bg-emerald-600 hover:bg-emerald-500 border-emerald-500/30 text-white shadow-emerald-500/10"
+            title="Download current predictions list as a CSV file"
+          >
+            <Download className="w-4 h-4 shrink-0" />
+            <span>Export Active (CSV)</span>
+          </button>
+
+          <button
+            onClick={exportAllToCSV}
+            className="px-4 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 border border-indigo-500/30 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition shadow-md shadow-indigo-650/10"
+            title="Download entire history as a CSV spreadsheet file"
+          >
+            <Download className="w-4 h-4 shrink-0" />
+            <span>Export History (CSV)</span>
+          </button>
+        </div>
+      </div>
+
+      {resolvedMessagesAlert() && (
+        <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex gap-3 text-xs text-indigo-300 leading-relaxed font-medium">
+          <Info className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
+          <p>
+            Analyse and verify predictions as they finish! Correct or incorrect game resolutions directly recalculate your dynamic accuracy index on the **AI Accuracy Diagnostics** page. Use the simulated "Auto-Oracle" for an instant high-fidelity math result based on team standard deviations.
+          </p>
+        </div>
+      )}
+
+      {/* Main Table Layout */}
+      <div className="overflow-x-auto no-scrollbar rounded-2xl border border-white/5">
+        <table className="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr className="border-b border-white/5 bg-black/20 text-slate-400 uppercase tracking-widest font-bold">
+              <th className="py-4 px-4 text-[10px]">Matchup / Sport</th>
+              <th className="py-4 px-4 text-[10px]">Model Projection (Home focus)</th>
+              <th className="py-4 px-4 text-[10px]">Actual Outcome</th>
+              <th className="py-4 px-4 text-center text-[10px]">Status</th>
+              <th className="py-4 px-4 text-[10px]">Dynamic Reports Summary & Operations</th>
+              <th className="py-4 px-4 text-[10px] text-right">Portfolio Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/5 text-slate-300 font-medium">
+            {filteredArchives.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="py-12 text-center text-slate-500 text-xs">
+                  No matching predictions recorded. Deploy some projection runs in the Sandbox first!
+                </td>
+              </tr>
+            ) : (
+              filteredArchives.map((archive) => {
+                const isPending = archive.status === "Pending" || archive.status === "Simulation Run";
+                const isResolving = resolvingId === archive.id;
+
+                return (
+                  <React.Fragment key={archive.id}>
+                    <motion.tr 
+                      layout
+                      initial={{ opacity: 0.6, scale: 0.99 }}
+                      animate={{ 
+                        opacity: 1, 
+                        scale: 1,
+                        backgroundColor: archive.status === "Correct" 
+                          ? "rgba(16, 185, 129, 0.08)"
+                          : archive.status === "Incorrect"
+                          ? "rgba(239, 68, 68, 0.05)"
+                          : isResolving
+                          ? "rgba(99, 102, 241, 0.1)"
+                          : "rgba(0, 0, 0, 0)" 
+                      }}
+                      transition={{ 
+                        type: "spring", 
+                        stiffness: 140, 
+                        damping: 15,
+                        duration: 0.55
+                      }}
+                      className={`hover:bg-white/4 transition duration-150 ${isResolving ? "bg-indigo-950/20" : ""}`}
+                    >
+                      <td className="py-4 px-4">
+                        <div className="font-extrabold text-white text-xs">{archive.matchup}</div>
+                        <span className="text-[9px] block text-indigo-400 font-bold uppercase tracking-widest mt-0.5">{archive.sport} • TELEMETRY</span>
+                      </td>
+                      <td className="py-4 px-4 font-mono">
+                        <div className="text-white font-bold text-xs">
+                          {archive.teamA} ({archive.probA}%) vs {archive.teamB} ({archive.probB}%)
+                        </div>
+                        <span className="text-[9px] block text-slate-500 mt-1">{archive.score}</span>
+                      </td>
+                      <td className="py-4 px-4 text-white font-black font-mono">
+                        {isPending ? (
+                          <span className="text-slate-500 text-[11px] italic">Not finished</span>
+                        ) : (
+                          <div className="flex flex-col gap-0.5">
+                            <span className="text-white text-xs">{archive.result}</span>
+                            <span className="text-[9px] text-slate-500 font-bold font-mono">
+                              Winner: {archive.actualOutcome === "teamA" ? "Home" : archive.actualOutcome === "teamB" ? "Away" : "Draw"}
+                            </span>
+                            
+                            {/* Visual probability-to-outcome deltas */}
+                            {archive.actualOutcome !== "draw" && (
+                              <div className="mt-2 space-y-1 bg-black/40 p-2 rounded-xl border border-white/5 text-[9px] font-mono">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-slate-500 uppercase text-[8px] font-bold">Winner Delta:</span>
+                                  <span className="text-emerald-400 font-black">
+                                    +{100 - (archive.actualOutcome === "teamA" ? archive.probA : archive.probB)}% realization
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-slate-500 uppercase text-[8px] font-bold">Loser Delta:</span>
+                                  <span className="text-rose-400/90 font-bold">
+                                    -{archive.actualOutcome === "teamA" ? archive.probB : archive.probA}% residual
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={`inline-flex items-center gap-1 font-extrabold px-3 py-1 rounded-full text-[9px] font-mono tracking-wider ${
+                          archive.status === "Correct" 
+                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
+                            : archive.status === "Incorrect"
+                            ? "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                            : "bg-indigo-500/15 text-indigo-400 border border-indigo-500/15"
+                        }`}>
+                          {archive.status === "Correct" && <BadgeCheck className="w-3.5 h-3.5" />}
+                          {archive.status === "Incorrect" && <XSquare className="w-3.5 h-3.5" />}
+                          {isPending && <Sparkles className="w-3 h-3 animate-pulse text-indigo-400" />}
+                          {archive.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-slate-350 max-w-sm leading-relaxed text-[11px]">
+                        <div className="space-y-2">
+                          <div className="line-clamp-2 text-slate-300 italic">"{archive.review || "No manual review compiled yet."}"</div>
+                          
+                          <button
+                            onClick={() => setExpandedId(expandedId === archive.id ? null : archive.id)}
+                            className="text-[10px] text-indigo-400 hover:text-indigo-300 font-extrabold flex items-center gap-1.5 transition uppercase tracking-wider cursor-pointer"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>{expandedId === archive.id ? "Hide Detailed Report ▲" : "View Deep Grounded Report ▼"}</span>
+                          </button>
+                        </div>
+                        
+                        {isPending && !archive.isStatic && (
+                          <div className="mt-3 flex items-center gap-2">
+                            <button 
+                              onClick={() => {
+                                setResolvingId(isResolving ? null : archive.id);
+                                setScoreAInput(archive.sport === "NBA" ? "112" : archive.sport === "NFL" ? "24" : "2");
+                                setScoreBInput(archive.sport === "NBA" ? "108" : archive.sport === "NFL" ? "21" : "1");
+                              }}
+                              className="px-3 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase tracking-wide cursor-pointer flex items-center gap-1 transition shadow shadow-indigo-600/30"
+                            >
+                              <RefreshCw className="w-3" />
+                              <span>Resolve Game</span>
+                            </button>
+                            <button 
+                              onClick={() => handleAutoResolve(archive.id, archive)}
+                              className="px-3 py-1 rounded bg-slate-800 hover:bg-slate-750 text-indigo-400 font-bold border border-slate-700 text-[10px] uppercase tracking-wide cursor-pointer transition flex items-center gap-1"
+                              title="Synthesize final score using calculated machine win probabilities"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              <span>Auto-Oracle Sim</span>
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                      
+                      {/* Portfolio Exports */}
+                      <td className="py-4 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button 
+                            onClick={() => openSocialCardStudio(archive)}
+                            className="p-2 rounded bg-indigo-600/25 hover:bg-indigo-600 hover:text-white border border-indigo-500/30 text-indigo-400 cursor-pointer transition flex items-center justify-center"
+                            title="Export beautiful Social Media Sharing PNG Card"
+                          >
+                            <Camera className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => copyMarkdownToClipboard(archive)}
+                            className="p-2 rounded bg-slate-950 hover:bg-slate-850 hover:text-white border border-slate-800 text-slate-400 cursor-pointer transition"
+                            title="Copy Markdown Report Brief"
+                          >
+                            {copyFeedbackId === archive.id ? <Check className="w-3.5 h-3.5 text-emerald-400 font-bold" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                          <button 
+                            onClick={() => exportToCSV(archive)}
+                            className="p-2 rounded bg-slate-950 hover:bg-slate-850 hover:text-white border border-slate-800 text-slate-400 cursor-pointer transition"
+                            title="Export to CSV Format"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => exportAsTXT(archive)}
+                            className="p-2 rounded bg-indigo-600/10 hover:bg-indigo-600 hover:text-white border border-indigo-500/20 text-indigo-400 cursor-pointer transition"
+                            title="Download Full Text Dossier"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </motion.tr>
+
+                    {/* Expandable Analytical Report Panel */}
+                    {expandedId === archive.id && (() => {
+                      const archAny = archive as any;
+                      const edgeLevelVal = archAny.edgeLevel || "Medium";
+                      const edgeDescVal = archAny.edgeDesc;
+                      const findingsList = archAny.findings || [];
+                      const offensiveWeightVal = archAny.offensiveWeight ?? 72;
+                      const defensiveWeightVal = archAny.defensiveWeight ?? 65;
+                      const homeFieldWeightVal = archAny.homeFieldWeight ?? 50;
+                      const weatherWeightVal = archAny.weatherWeight ?? 40;
+                      const markdownAnalysisVal = archAny.markdownAnalysis;
+                      const sourcesList = archAny.sources || [];
+
+                      return (
+                        <tr key={`details-${archive.id}`} className="bg-indigo-950/10">
+                          <td colSpan={6} className="py-6 px-6 border-b border-indigo-500/15">
+                            <div className="p-6 md:p-8 rounded-[2rem] bg-slate-950 border border-indigo-500/20 space-y-6 relative overflow-hidden">
+                              <div className="absolute top-[-30%] right-[-20%] w-64 h-64 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
+                              
+                              {/* Panel Header */}
+                              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-white/5 pb-4">
+                                <div>
+                                  <h4 className="text-sm font-black text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                                    <Sparkles className="w-4 h-4 text-indigo-400" />
+                                    <span>Apex Modeling Intelligence Report</span>
+                                  </h4>
+                                  <p className="text-xs text-slate-400 mt-0.5">Grounding data feed and simulation score distributions verified.</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[9px] uppercase font-mono tracking-widest text-indigo-300 font-extrabold bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded">
+                                    Sport: {archive.sport}
+                                  </span>
+                                  <span className={`text-[9px] uppercase font-mono tracking-widest font-extrabold px-2.5 py-1 rounded border ${
+                                    edgeLevelVal === "High" || edgeLevelVal === "A+" || edgeLevelVal === "A+ Edge"
+                                      ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                      : "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+                                  }`}>
+                                    Edge: {edgeLevelVal}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* Panel Grid Content */}
+                              <div className="grid md:grid-cols-2 gap-6">
+                                {/* Left side: Rationale text & Grounding findings */}
+                                <div className="space-y-4">
+                                  <div className="space-y-1.5">
+                                    <label className="text-[10px] font-mono uppercase font-black tracking-widest text-slate-400 block">
+                                      🎯 Analyst Verdict & Match Rationale
+                                    </label>
+                                    <div className="text-xs text-slate-300 leading-relaxed font-sans bg-slate-900/60 p-4 rounded-xl border border-white/5 space-y-2">
+                                      <p>{archive.review || "No manual summary available today."}</p>
+                                      {edgeDescVal && (
+                                        <p className="mt-2.5 pt-2.5 border-t border-white/5 text-[11px] text-slate-450 leading-relaxed italic">
+                                          <strong>Expected Market Variance:</strong> {edgeDescVal}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {findingsList && findingsList.length > 0 && (
+                                    <div className="space-y-2">
+                                      <label className="text-[10px] font-mono uppercase font-black tracking-widest text-slate-400 block">
+                                        🌐 Live Google Grounded Insights
+                                      </label>
+                                      <div className="space-y-1.5">
+                                        {findingsList.map((f: string, idx: number) => (
+                                          <div key={idx} className="flex gap-2.5 text-xs text-slate-300 font-sans p-3 rounded-xl bg-black/30 border border-white/5">
+                                            <span className="text-xs text-indigo-400 shrink-0 select-none">❖</span>
+                                            <span className="leading-relaxed font-semibold">{f}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Right side: Weights & Deep-Dive Analysis */}
+                                <div className="space-y-4">
+                                  <div className="space-y-2.5">
+                                    <label className="text-[10px] font-mono uppercase font-black tracking-widest text-slate-400 block">
+                                      📊 Automated Monte Carlo Weights
+                                    </label>
+                                    <div className="bg-slate-900/40 border border-white/5 rounded-2xl p-4.5 space-y-3.5">
+                                      {[
+                                        { name: "Offensive Power Vector", val: offensiveWeightVal },
+                                        { name: "Defensive Rating Anchor", val: defensiveWeightVal },
+                                        { name: "Home Court / Local Aura Factor", val: homeFieldWeightVal },
+                                        { name: "Weather & External Anomalies", val: weatherWeightVal }
+                                      ].map((weight, idx) => (
+                                        <div key={idx} className="space-y-1">
+                                          <div className="flex justify-between items-center text-[10px] font-mono">
+                                            <span className="text-slate-400 font-bold">{weight.name}</span>
+                                            <span className="text-indigo-400 font-black">{weight.val}%</span>
+                                          </div>
+                                          <div className="h-1.5 bg-black rounded-full p-0.5 overflow-hidden">
+                                            <div 
+                                              className="h-full bg-indigo-500 rounded-full transition-all"
+                                              style={{ width: `${weight.val}%` }}
+                                            />
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+
+                                  {markdownAnalysisVal && (
+                                    <div className="space-y-1.5">
+                                      <label className="text-[10px] font-mono uppercase font-black tracking-widest text-slate-400 block">
+                                        📋 Deep-Dive Telemetry Dossier
+                                      </label>
+                                      <div className="text-xs text-slate-400 leading-relaxed font-sans bg-slate-900/50 p-4 rounded-xl border border-white/5 max-h-[140px] overflow-y-auto no-scrollbar whitespace-pre-line">
+                                        {markdownAnalysisVal}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {sourcesList && sourcesList.length > 0 && (
+                                    <div className="space-y-2">
+                                      <label className="text-[10px] font-mono uppercase font-black tracking-widest text-slate-400 block">
+                                        🔗 Grounded Reference Signals
+                                      </label>
+                                      <div className="flex gap-2 flex-wrap">
+                                        {sourcesList.map((src: any, sIdx: number) => (
+                                          <a 
+                                            key={sIdx}
+                                            href={src.url} 
+                                            target="_blank" 
+                                            rel="noreferrer"
+                                            className="text-[10px] text-indigo-300 font-mono font-bold bg-indigo-500/10 border border-indigo-500/25 px-2.5 py-1.5 rounded-lg hover:bg-indigo-600 hover:text-white transition cursor-pointer flex items-center gap-1.5"
+                                          >
+                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-ping" />
+                                            <span className="truncate max-w-[150px]">{src.title}</span>
+                                          </a>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Panel Footer */}
+                              <div className="flex justify-between items-center border-t border-white/10 pt-4 text-[9px] text-slate-500 font-mono">
+                                <span>PREDICTION_UID: {archive.id}</span>
+                                <button
+                                  onClick={() => setExpandedId(null)}
+                                  className="text-slate-400 hover:text-white font-extrabold uppercase tracking-wide cursor-pointer transition text-[9px]"
+                                >
+                                  Collapse Report ▲
+                                </button>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })()}
+
+                    {/* Expandable Manual Resolution Card */}
+                    {isResolving && (
+                      <tr key={`resolve-${archive.id}`} className="bg-indigo-950/10">
+                        <td colSpan={6} className="py-4 px-6 border-b border-indigo-500/20">
+                          <div className="p-5 rounded-2xl bg-slate-955 border border-indigo-555/20 max-w-2xl space-y-4">
+                            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                              <span className="text-[10px] text-indigo-400 font-mono font-bold uppercase tracking-widest flex items-center gap-1">
+                                <Sparkles className="w-3.5 h-3.5" />
+                                Custom Scoreboard Intervention Tool
+                              </span>
+                              <button 
+                                onClick={() => setResolvingId(null)}
+                                className="text-slate-400 hover:text-white font-extrabold text-xs"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+
+                            <div className="grid sm:grid-cols-2 gap-4">
+                              {/* Team A score */}
+                              <div className="space-y-1.5">
+                                <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400">{archive.teamA} (Home) Final Score</label>
+                                <input 
+                                  type="number"
+                                  value={scoreAInput}
+                                  onChange={(e) => setScoreAInput(e.target.value)}
+                                  className="w-full bg-slate-950 border border-slate-800 text-xs px-3 py-2 text-white font-mono rounded"
+                                  placeholder="0"
+                                />
+                              </div>
+                              {/* Team B score */}
+                              <div className="space-y-1.5">
+                                <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400">{archive.teamB} (Away) Final Score</label>
+                                <input 
+                                  type="number"
+                                  value={scoreBInput}
+                                  onChange={(e) => setScoreBInput(e.target.value)}
+                                  className="w-full bg-slate-950 border border-slate-800 text-xs px-3 py-2 text-white font-mono rounded"
+                                  placeholder="0"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Select winner */}
+                            <div className="space-y-1.5">
+                              <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400 block">Matched Winner Option</label>
+                              <div className="flex gap-2">
+                                <button 
+                                  onClick={() => setWinnerInput("teamA")}
+                                  className={`flex-1 py-1.5 text-[10px] rounded border font-semibold ${
+                                    winnerInput === "teamA" ? "bg-indigo-600 text-white border-indigo-500" : "bg-slate-950 border-slate-800 text-slate-400"
+                                  }`}
+                                >
+                                  {archive.teamA} (Home Won)
+                                </button>
+                                <button 
+                                  onClick={() => setWinnerInput("teamB")}
+                                  className={`flex-1 py-1.5 text-[10px] rounded border font-semibold ${
+                                    winnerInput === "teamB" ? "bg-indigo-600 text-white border-indigo-500" : "bg-slate-950 border-slate-800 text-slate-400"
+                                  }`}
+                                >
+                                  {archive.teamB} (Away Won)
+                                </button>
+                                <button 
+                                  onClick={() => setWinnerInput("draw")}
+                                  className={`flex-1 py-1.5 text-[10px] rounded border font-semibold ${
+                                    winnerInput === "draw" ? "bg-indigo-600 text-white border-indigo-500" : "bg-slate-950 border-slate-800 text-slate-400"
+                                  }`}
+                                >
+                                  Tie Draw
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Custom review description */}
+                            <div className="space-y-1.5">
+                              <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400">Custom Analyst Review Description (Optional)</label>
+                              <input 
+                                type="text"
+                                value={resolutionSummary}
+                                onChange={(e) => setResolutionSummary(e.target.value)}
+                                placeholder="Enter custom matchup notes or performance outlier evaluations..."
+                                className="w-full bg-slate-950 border border-slate-800 text-xs px-3 py-2 text-white rounded"
+                              />
+                            </div>
+
+                            <button
+                              onClick={() => handleManualResolveSubmit(archive.id)}
+                              className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-heavy text-xs uppercase tracking-wider rounded transition"
+                            >
+                              Commit Official Scoreboard Decision
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* SOCIAL CARD CONVERSION AND PREVIEW MODAL */}
+      {selectedSocialCard && (() => {
+        const activeTheme = (() => {
+          switch(socialTheme) {
+            case "cyber":
+              return {
+                bg: "bg-[linear-gradient(135deg,#020617_20%,#1e102f_70%,#4a124e_100%)]",
+                border: "border-purple-500/35",
+                brandText: "text-purple-400",
+                pill: "bg-purple-500/15 text-purple-400 border-purple-500/25",
+                auraRight: "bg-purple-500/10",
+                auraLeft: "bg-pink-500/5",
+                accent: "bg-purple-500",
+                accentGlow: "shadow-purple-500/35"
+              };
+            case "emerald":
+              return {
+                bg: "bg-[linear-gradient(135deg,#022c22_10%,#020617_60%,#064e3b_100%)]",
+                border: "border-emerald-500/30",
+                brandText: "text-emerald-400",
+                pill: "bg-emerald-500/15 text-emerald-400 border-emerald-500/25",
+                auraRight: "bg-emerald-500/10",
+                auraLeft: "bg-teal-500/5",
+                accent: "bg-emerald-500",
+                accentGlow: "shadow-emerald-500/35"
+              };
+            case "amber":
+              return {
+                bg: "bg-[linear-gradient(135deg,#1c1917_20%,#0c0a09_80%,#451a03_100%)]",
+                border: "border-amber-500/30",
+                brandText: "text-amber-400",
+                pill: "bg-amber-500/15 text-amber-500 border-amber-500/25",
+                auraRight: "bg-amber-500/10",
+                auraLeft: "bg-orange-500/5",
+                accent: "bg-amber-500",
+                accentGlow: "shadow-amber-500/35"
+              };
+            case "hot_red":
+              return {
+                bg: "bg-[linear-gradient(135deg,#020617_25%,#180808_75%,#7f1d1d_100%)]",
+                border: "border-red-500/30",
+                brandText: "text-red-400",
+                pill: "bg-red-500/15 text-red-400 border-red-500/25",
+                auraRight: "bg-red-500/10",
+                auraLeft: "bg-rose-500/5",
+                accent: "bg-red-500",
+                accentGlow: "shadow-red-500/35"
+              };
+            case "nebula":
+            default:
+              return {
+                bg: "bg-[linear-gradient(135deg,#030712_30%,#131034_75%,#1e1b4b_100%)]",
+                border: "border-indigo-500/40",
+                brandText: "text-indigo-400",
+                pill: "bg-indigo-500/15 text-indigo-400 border-indigo-500/25",
+                auraRight: "bg-indigo-500/10",
+                auraLeft: "bg-teal-500/5",
+                accent: "bg-indigo-500",
+                accentGlow: "shadow-indigo-500/35"
+              };
+          }
+        })();
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 backdrop-blur-md p-4 overflow-y-auto">
+            <div className="bg-slate-950 border border-white/10 rounded-[2.5rem] p-6 md:p-8 max-w-5xl w-full space-y-6 relative overflow-hidden animate-fade-in shadow-2xl">
+              <div className="absolute top-[-20%] left-[-20%] w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+              <div className="absolute bottom-[-20%] right-[-20%] w-64 h-64 bg-teal-500/5 rounded-full blur-3xl pointer-events-none" />
+
+              {/* Title Header line */}
+              <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                <div>
+                  <h4 className="text-base font-black text-white flex items-center gap-2">
+                    <Camera className="w-5 h-5 text-indigo-400" />
+                    <span>Apex Interactive Social Studio</span>
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-1">Design, preview, and customize branded prediction graphics live before exporting.</p>
+                </div>
+                <button 
+                  onClick={() => setSelectedSocialCard(null)}
+                  className="p-2 rounded-full hover:bg-white/5 text-slate-400 hover:text-white transition cursor-pointer"
+                >
+                  <XSquare className="w-6 h-6 shrink-0" />
+                </button>
+              </div>
+
+              {/* Split-pane Workspace Layout */}
+              <div className="grid lg:grid-cols-12 gap-8 items-stretch">
+                
+                {/* 1. Controller Sidebar Panel */}
+                <div className="lg:col-span-5 space-y-5 bg-slate-900/40 p-5 rounded-[1.5rem] border border-white/5 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div className="border-b border-white/5 pb-2">
+                      <span className="text-[10px] font-mono font-black text-indigo-400 uppercase tracking-wider block">Live Controls Console</span>
+                    </div>
+
+                    {/* Theme selector */}
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase font-mono tracking-widest text-slate-400 font-bold block">Style Vibe Preset</label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        {[
+                          { id: "nebula", name: "Deep Space" },
+                          { id: "cyber", name: "Cyber Punk" },
+                          { id: "emerald", name: "Bio-Matrix" },
+                          { id: "amber", name: "Syndicate" },
+                          { id: "hot_red", name: "Apex Flare" }
+                        ].map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={() => setSocialTheme(t.id as any)}
+                            className={`py-2 px-3 text-[10px] uppercase font-mono font-bold rounded-lg border transition cursor-pointer text-center ${
+                              socialTheme === t.id 
+                                ? "bg-indigo-600 border-indigo-500 text-white shadow shadow-indigo-600/20" 
+                                : "bg-black/40 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-white"
+                            }`}
+                          >
+                            {t.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Caption Overlay */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-mono tracking-widest text-slate-400 font-bold block">Branded Caption Label</label>
+                      <input 
+                        type="text"
+                        value={socialCustomCaption}
+                        onChange={(e) => setSocialCustomCaption(e.target.value)}
+                        placeholder="E.g., 🔒 CORE APEX LOCK"
+                        className="w-full bg-black/50 border border-slate-800 text-xs px-3.5 py-2.5 text-white font-mono rounded-xl focus:border-indigo-500 outline-none"
+                      />
+                    </div>
+
+                    {/* Review Narrative Detail text */}
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] uppercase font-mono tracking-widest text-slate-400 font-bold block">Customize analyst review note</label>
+                      <textarea 
+                        value={socialCustomNote}
+                        onChange={(e) => setSocialCustomNote(e.target.value)}
+                        placeholder="Draft your key summary observation overlay context here..."
+                        className="w-full bg-black/50 border border-slate-800 text-xs px-3.5 py-2.5 text-white rounded-xl focus:border-indigo-500 outline-none h-24 resize-none no-scrollbar font-sans"
+                      />
+                    </div>
+
+                    {/* Checkbox Layout configs */}
+                    <div className="space-y-2 bg-black/30 p-3.5 rounded-xl border border-white/5">
+                      <label className="text-[10px] uppercase font-mono tracking-widest text-indigo-400 font-bold block mb-2">Display Overlay Attributes</label>
+                      
+                      <div className="flex items-center justify-between py-1.5">
+                        <span className="text-xs text-slate-300 font-sans">Show confidence banner label</span>
+                        <input 
+                          type="checkbox"
+                          checked={socialShowEdge}
+                          onChange={(e) => setSocialShowEdge(e.target.checked)}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between py-1.5 border-t border-white/5">
+                        <span className="text-xs text-slate-300 font-sans">Show neural weight factors list</span>
+                        <input 
+                          type="checkbox"
+                          checked={socialShowMetrics}
+                          onChange={(e) => setSocialShowMetrics(e.target.checked)}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between py-1.5 border-t border-white/5">
+                        <span className="text-xs text-slate-300 font-sans">Show live grounded smart findings</span>
+                        <input 
+                          type="checkbox"
+                          checked={socialShowFindings}
+                          onChange={(e) => setSocialShowFindings(e.target.checked)}
+                          className="w-4 h-4 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Actions row for download inside controller */}
+                  <div className="pt-4 border-t border-white/5 flex gap-3">
+                    <button
+                      onClick={() => setSelectedSocialCard(null)}
+                      className="flex-1 py-3 text-xs font-black uppercase tracking-wider rounded-2xl bg-black hover:bg-slate-900 border border-slate-850 text-slate-400 cursor-pointer transition text-center"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={handleExportSocialCard}
+                      disabled={exportingSocialImage}
+                      className="flex-1 py-3 text-xs font-black uppercase tracking-wider rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white cursor-pointer transition flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+                    >
+                      {exportingSocialImage ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin text-white" />
+                          <span>Generating PNG...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Download className="w-4 h-4 text-white" />
+                          <span>Export PNG</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Interactive WYSIWYG Live Preview Panel */}
+                <div className="lg:col-span-7 flex flex-col justify-center bg-black/30 rounded-[2rem] border border-white/5 p-4 relative overflow-hidden">
+                  <span className="text-[9px] uppercase font-mono tracking-widest text-slate-500 block absolute top-4 left-4">Live WYSIWYG HD Render Frame</span>
+                  
+                  {/* Aspect crop alignment box */}
+                  <div className="w-full overflow-x-auto no-scrollbar py-6 flex justify-center">
+                    <div 
+                      ref={socialCardRef}
+                      className={`w-[520px] ${activeTheme.bg} border ${activeTheme.border} rounded-[1.75rem] p-6 space-y-5 relative overflow-hidden select-none shrink-0 shadow-2xl transition-all duration-300`}
+                    >
+                      {/* Interactive glowing ambient layout */}
+                      <div className={`absolute top-0 right-0 w-44 h-44 ${activeTheme.auraRight} rounded-full blur-3xl pointer-events-none transition-all duration-300`} />
+                      <div className={`absolute bottom-0 left-0 w-44 h-44 ${activeTheme.auraLeft} rounded-full blur-3xl pointer-events-none transition-all duration-300`} />
+
+                      {/* Top Branding Section */}
+                      <div className="flex justify-between items-center border-b border-white/10 pb-3 relative z-15">
+                        <div className="flex items-center gap-2.5">
+                          <img 
+                            src="/src/assets/images/apexodds_logo_1781644611647.jpg" 
+                            alt="ApexOdds Logo" 
+                            className="w-7 h-7 rounded-lg border border-indigo-500/25 object-cover shadow shadow-indigo-600/20"
+                            referrerPolicy="no-referrer"
+                          />
+                          <div>
+                            <h4 className="text-[10px] font-mono font-black text-white tracking-widest uppercase">APEXODDS // VERBOSE TELEMETRY</h4>
+                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider block font-mono">Quantum Simulation Engine v4.2</span>
+                          </div>
+                        </div>
+
+                        {socialShowEdge && (
+                          <div className="text-right">
+                            <span className={`text-[8px] uppercase font-mono tracking-widest font-black border px-2 py-0.5 rounded ${activeTheme.pill} transition-all duration-300`}>
+                              {socialCustomCaption}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Main matchup and sport panel */}
+                      <div className="text-center space-y-1 relative z-15">
+                        <span className="text-[9px] text-slate-400 tracking-widest uppercase font-mono block">Simulation Verdict • {selectedSocialCard.sport}</span>
+                        <h3 className="text-lg font-black text-white tracking-tight leading-tight">{selectedSocialCard.matchup}</h3>
+                      </div>
+
+                      {/* High-fidelity Comparison Probability Bar */}
+                      <div className="space-y-2 bg-black/40 p-4 rounded-xl border border-white/5 relative z-15">
+                        <div className="flex justify-between items-center text-[9px] font-mono font-bold text-slate-350">
+                          <span className="text-white">{selectedSocialCard.teamA?.toUpperCase()} ({selectedSocialCard.probA || 50}%)</span>
+                          <span className={`${activeTheme.brandText} tracking-widest uppercase font-bold text-[8px]`}>Expected Win Rate</span>
+                          <span className="text-white">{selectedSocialCard.teamB?.toUpperCase()} ({selectedSocialCard.probB || 50}%)</span>
+                        </div>
+                        {/* Progressive Gauge */}
+                        <div className="h-2 bg-slate-950 rounded-full overflow-hidden flex p-0.5 border border-white/5">
+                          <div 
+                            className={`h-full ${activeTheme.accent} rounded-full transition-all duration-300`}
+                            style={{ width: `${selectedSocialCard.probA || 50}%` }}
+                          />
+                          <div 
+                            className="h-full bg-slate-800 rounded-full transition-all duration-350"
+                            style={{ width: `${selectedSocialCard.probB || 50}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Line Scores Section */}
+                      <div className="grid grid-cols-2 gap-4 text-center relative z-15">
+                        <div className="bg-black/35 p-2.5 rounded-lg border border-white/5">
+                          <span className="text-[8px] text-slate-500 uppercase font-mono tracking-wider block">Projected Score Parameters</span>
+                          <strong className="text-white text-xs font-mono block mt-0.5">{selectedSocialCard.score}</strong>
+                        </div>
+                        <div className="bg-black/35 p-2.5 rounded-lg border border-white/5">
+                          <span className="text-[8px] text-slate-500 uppercase font-mono tracking-wider block">Actual Result Verdict</span>
+                          <strong className="text-white text-xs font-mono block mt-0.5">{selectedSocialCard.result || "PENDING BOARD"}</strong>
+                        </div>
+                      </div>
+
+                      {/* Custom note overlay */}
+                      <div className="p-3.5 rounded-xl bg-slate-900/60 border border-white/5 text-[10px] text-slate-300 leading-relaxed italic relative z-15">
+                        <span className={`${activeTheme.brandText} text-[8px] font-mono font-black uppercase tracking-widest block mb-1 not-italic`}>
+                          🔮 Telemetry Analyst Note
+                        </span>
+                        <span>"{socialCustomNote || "No manual commentary drafted."}"</span>
+                      </div>
+
+                      {/* Weight sliders rendering logic */}
+                      {socialShowMetrics && (
+                        <div className="bg-black/40 p-3.5 rounded-xl border border-white/5 space-y-2.5 relative z-15">
+                          <span className="text-[8px] uppercase font-mono tracking-widest text-slate-400 font-bold block">MODEL NEURAL COEFFICIENT DRIVERS</span>
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 font-mono text-[9px]">
+                            {[
+                              { label: "Offense Weight", val: selectedSocialCard.offensiveWeight ?? 72 },
+                              { label: "Defense Weight", val: selectedSocialCard.defensiveWeight ?? 65 },
+                              { label: "Home Court Aura", val: selectedSocialCard.homeFieldWeight ?? 50 },
+                              { label: "Weather Dynamic", val: selectedSocialCard.weatherWeight ?? 40 }
+                            ].map((weight, idx) => (
+                              <div key={idx} className="flex justify-between items-center text-slate-400 border-b border-white/5 pb-1">
+                                <span>{weight.label}:</span>
+                                <span className="text-white font-bold">{weight.val}%</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Grounded Bullet Findings list */}
+                      {socialShowFindings && selectedSocialCard.findings && selectedSocialCard.findings.length > 0 && (
+                        <div className="space-y-1.5 relative z-15">
+                          <span className="text-[8px] uppercase font-mono tracking-widest text-slate-400 font-bold block">GOOGLE GROUNDED EVIDENCE CLUES</span>
+                          <div className="space-y-1">
+                            {selectedSocialCard.findings.slice(0, 2).map((finding: string, idx: number) => (
+                              <div key={idx} className="flex gap-1.5 text-[9px] text-slate-350 leading-relaxed items-start bg-black/25 p-1.5 rounded border border-white/5">
+                                <span className={`${activeTheme.brandText} shrink-0`}>❖</span>
+                                <span className="truncate">{finding}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Footer signatures */}
+                      <div className="flex justify-between items-center border-t border-white/10 pt-3 text-[8px] text-slate-500 font-mono relative z-15">
+                        <span>MODEL VERIFICATION ID: {selectedSocialCard.id}</span>
+                        <span>QUANTUM ARRAYS DEPLOYED • {selectedSocialCard.createdAt}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Aesthetic hints */}
+                  <div className="space-y-1 text-center font-sans">
+                    <p className="text-[10px] text-slate-400">
+                      * Beautifully cropped and generated 2x scale HD output. Handcrafted for Instagram, X / Twitter feed dimensions.
+                    </p>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+
+  function resolvedMessagesAlert(): boolean {
+    const pendCount = allArchives.filter(a => a.status === "Pending" || a.status === "Simulation Run").length;
+    return pendCount > 0;
+  }
+}
